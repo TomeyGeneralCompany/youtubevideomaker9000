@@ -1,5 +1,5 @@
 """Configure selected media assets in a separate workspace; never change a live installation."""
-import argparse, hashlib, json, os, shutil
+import argparse, hashlib, json, shutil
 from pathlib import Path
 
 def main():
@@ -27,11 +27,8 @@ def main():
             if not ref.is_file():
                 p.error('Voice reference file does not exist.')
             voice['reference_wav'] = str(ref.resolve())
-    elif voice.get('provider') == 'edge-tts':
-        if not voice.get('voice'):
-            p.error('Edge TTS requires an explicitly selected voice.')
     else:
-        p.error('Voice provider must be qwen-local or edge-tts.')
+        p.error('Voice provider must be qwen-local; the unused Edge/gTTS path has been removed.')
     if a.background and (not a.background.is_file()):
         p.error('Background file does not exist.')
     root.mkdir(parents=True, exist_ok=True)

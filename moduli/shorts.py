@@ -75,48 +75,6 @@ def fit_narration(source, dest, target=90):
     subprocess.run([ffmpeg_path(), '-y', '-nostdin', '-v', 'error', '-i', str(source), '-af', f'atempo={tempo:.8f},apad,atrim=duration={target},asetpts=N/SR/TB', '-ar', '48000', '-ac', '2', '-c:a', 'pcm_s16le', str(dest)], check=True, capture_output=True, timeout=120)
     return str(dest)
 
-def cached_image(prompt, fetch):
-    """Retry network requests, then use cache or an original Americana graphic."""
-    from PIL import Image, ImageDraw
-    directory = Path('cache/pollinations_images')
-    directory.mkdir(parents=True, exist_ok=True)
-    path = directory / (hashlib.sha256(('portrait-v2|' + prompt).encode()).hexdigest()[:20] + '.png')
-    if path.exists():
-        try:
-            with Image.open(path) as im:
-                return im.convert('RGB')
-        except OSError:
-            path.unlink()
-    try:
-        image = retry(fetch)
-        if not isinstance(image, Image.Image):
-            raise ValueError('Image provider returned no usable image')
-    except Exception as exc:
-        print(f'[images] Provider unavailable ({type(exc).__name__}); using local artwork/cache', flush=True)
-        candidates = sorted(directory.glob('*.png'))
-        random.Random(prompt).shuffle(candidates)
-        for candidate in candidates:
-            try:
-                with Image.open(candidate) as im:
-                    return im.convert('RGB')
-            except OSError:
-                continue
-        image = Image.new('RGB', (WIDTH, HEIGHT), '#091e42')
-        draw = ImageDraw.Draw(image)
-        for i in range(13):
-            y = int(i * HEIGHT / 13)
-            draw.rectangle((0, y, WIDTH, int((i + 1) * HEIGHT / 13)), fill='#b31942' if i % 2 == 0 else '#f1f0e8')
-        draw.rectangle((0, 0, 650, 950), fill='#0a3161')
-        for row in range(9):
-            for col in range(6 if row % 2 == 0 else 5):
-                cx, cy = (55 + col * 105 + (50 if row % 2 else 0), 65 + row * 100)
-                points = [(cx + (28 if k % 2 == 0 else 12) * math.cos(-math.pi / 2 + k * math.pi / 5), cy + (28 if k % 2 == 0 else 12) * math.sin(-math.pi / 2 + k * math.pi / 5)) for k in range(10)]
-                draw.polygon(points, fill='#fff8d2')
-    tmp = path.with_suffix('.tmp.png')
-    image.save(tmp)
-    os.replace(tmp, path)
-    return image.convert('RGB')
-
 def _ass_time(seconds):
     centis = round(seconds * 100)
     h, centis = divmod(centis, 360000)
@@ -171,55 +129,36 @@ def local_music(path):
         out.writeframes(samples.tobytes())
     return str(path)
 
-def render_short(audio_path, keywords, clip_paths, output_path, mood=None, on_progress=None, custom_music=None, captions_text=None):
-    from moduli import montaggio as m
+def render_short(audio_path, output_path, mood=None, on_progress=None, custom_music=None, captions_text=None):
+    from moduli import media_tools as m
     destination = Path(output_path).absolute()
     destination.parent.mkdir(parents=True, exist_ok=True)
-    mascot_mode = os.environ.get('PAUL_REVERE_VIDEO_MODE', 'mascot') == 'mascot'
-    files, durations = m._filtra_clip_leggibili([clip_paths[k] for k in keywords if k in clip_paths]) if not mascot_mode else ([], {})
-    if not mascot_mode and (not files):
-        raise ValueError('No readable visual clips; cannot render Short')
-    sequence = m._build_clip_sequence(files, 30, m._clip_prioritarie(keywords, clip_paths, files)) if not mascot_mode else []
     with tempfile.TemporaryDirectory(prefix='paul-revere-short_') as root:
         root = Path(root)
         narration = fit_narration(audio_path, root / 'narration.wav')
         ass = root / 'captions.ass'
-        write_ass(captions_text, ass, cigar_beat=mascot_mode, closing_words=int(os.environ.get('PAUL_REVERE_CLOSING_WORDS', '35')))
+        write_ass(captions_text, ass, cigar_beat=True, closing_words=int(os.environ.get('PAUL_REVERE_CLOSING_WORDS', '35')))
         segments = []
-        if mascot_mode:
-            from moduli.mascot import render_mascot
-            title = os.environ.get('PAUL_REVERE_CURRENT_TITLE', '')
-            layer = destination.parent / 'mascot-layer.mkv'
-            metadata = destination.parent / 'mascot-layer.json'
-            signature = hashlib.sha256(Path(narration).read_bytes() + (animation_directory() / 'poses.png').read_bytes() + title.encode() + b'mascot-approved-cels-20261015-r1').hexdigest()
-            reusable = False
-            if layer.exists() and metadata.exists():
-                try:
-                    info = probe(layer)
-                    reusable = json.loads(metadata.read_text()).get('signature') == signature and abs(float(info['format']['duration']) - 90) < 1 / FPS
-                except (ValueError, OSError, subprocess.CalledProcessError):
-                    pass
-            if not reusable:
-                render_mascot(narration, root / 'mascot.mkv', title=title, on_progress=on_progress)
-                import shutil
-                shutil.copyfile(root / 'mascot.mkv', layer)
-                if abs(float(probe(layer)['format']['duration']) - 90) > 1 / FPS:
-                    raise ValueError('Incomplete mascot animation layer')
-                atomic_json(metadata, {'signature': signature})
-            segments = [layer]
-        for i, source in enumerate(sequence):
-            target = root / f'segment_{i:03}.mkv'
-
-            def render_segment():
-                m._render_segment_ffmpeg(source, str(target), i * 3, 3, None, durations[source])
-                info = probe(target)
-                streams = [x for x in info['streams'] if x['codec_type'] == 'video']
-                if not streams or abs(float(info['format'].get('duration', 0)) - 3) > 1 / FPS:
-                    raise ValueError('Encoder returned an incomplete visual segment')
-            retry(render_segment)
-            segments.append(target)
-            if on_progress:
-                on_progress(round((i + 1) / 30 * 80), 'vertical segments')
+        from moduli.mascot import render_mascot
+        title = os.environ.get('PAUL_REVERE_CURRENT_TITLE', '')
+        layer = destination.parent / 'mascot-layer.mkv'
+        metadata = destination.parent / 'mascot-layer.json'
+        signature = hashlib.sha256(Path(narration).read_bytes() + (animation_directory() / 'poses.png').read_bytes() + title.encode() + b'mascot-approved-cels-20261015-r1').hexdigest()
+        reusable = False
+        if layer.exists() and metadata.exists():
+            try:
+                info = probe(layer)
+                reusable = json.loads(metadata.read_text()).get('signature') == signature and abs(float(info['format']['duration']) - 90) < 1 / FPS
+            except (ValueError, OSError, subprocess.CalledProcessError):
+                pass
+        if not reusable:
+            render_mascot(narration, root / 'mascot.mkv', title=title, on_progress=on_progress)
+            import shutil
+            shutil.copyfile(root / 'mascot.mkv', layer)
+            if abs(float(probe(layer)['format']['duration']) - 90) > 1 / FPS:
+                raise ValueError('Incomplete mascot animation layer')
+            atomic_json(metadata, {'signature': signature})
+        segments = [layer]
         listing = root / 'segments.txt'
         listing.write_text(''.join((m._concat_file_line(str(s)) for s in segments)))
         music = custom_music if custom_music and Path(custom_music).exists() else m._pick_music(mood)

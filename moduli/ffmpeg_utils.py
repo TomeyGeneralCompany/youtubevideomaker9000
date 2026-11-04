@@ -1,7 +1,6 @@
 """Locate FFmpeg and FFprobe for both narration and video editing."""
 import os
 import shutil
-import sys
 _CANDIDATI_FFMPEG = ['C:\\ffmpeg\\bin\\ffmpeg.exe', 'C:\\Program Files\\ffmpeg\\bin\\ffmpeg.exe', 'C:\\ProgramData\\chocolatey\\bin\\ffmpeg.exe', '/usr/bin/ffmpeg', '/usr/local/bin/ffmpeg', '/opt/homebrew/bin/ffmpeg']
 
 def ffmpeg_path() -> str:
@@ -30,17 +29,3 @@ def ffprobe_path() -> str:
     if shutil.which('ffprobe'):
         return 'ffprobe'
     return 'ffprobe'
-
-def esporta_per_moviepy() -> str | None:
-    """Set FFMPEG_BINARY before importing MoviePy so all render paths use the same FFmpeg. Return the selected path or None."""
-    if 'moviepy.config' in sys.modules:
-        return os.environ.get('FFMPEG_BINARY')
-    try:
-        percorso = ffmpeg_path()
-    except FileNotFoundError:
-        return None
-    if percorso == 'ffmpeg':
-        os.environ.setdefault('FFMPEG_BINARY', 'auto-detect')
-    else:
-        os.environ['FFMPEG_BINARY'] = percorso
-    return os.environ['FFMPEG_BINARY']

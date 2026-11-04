@@ -2,11 +2,9 @@
 import argparse
 from datetime import datetime, timedelta, timezone
 import fcntl
-import hashlib
 import json
 import os
 from pathlib import Path
-import sys
 from zoneinfo import ZoneInfo
 ROOT = Path(os.environ.get('TUBE_WORKSPACE', Path.home() / '.tomey-media')).expanduser().resolve()
 
@@ -15,7 +13,7 @@ def boot():
     os.chdir(ROOT)
     from dotenv import load_dotenv
     load_dotenv(ROOT / '.env')
-    os.environ.update(VIDEO_WIDTH='1080', VIDEO_HEIGHT='1920', VIDEO_FPS='30', VIDEO_SOURCE='ai', VIDEO_AI_PROVIDER='pollinations', IMAGE_PROVIDER='pollinations', VIDEO_CODEC='libx264', PAUL_REVERE_FREE_ONLY='1', PAUL_REVERE_PUBLISH_MODE='private', PAUL_REVERE_VIDEO_MODE='mascot')
+    os.environ.update(VIDEO_WIDTH='1080', VIDEO_HEIGHT='1920', VIDEO_FPS='30', VIDEO_CODEC='libx264', PAUL_REVERE_FREE_ONLY='1', PAUL_REVERE_PUBLISH_MODE='private', PAUL_REVERE_VIDEO_MODE='mascot')
 
 def config():
     defaults = {'timezone': 'America/Detroit', 'publish_times': ['18:00'], 'lead_minutes': 180, 'mode': 'private', 'expected_channel': 'Paul Revere Media'}
@@ -68,7 +66,6 @@ def read_editorial(path):
     data.setdefault('description', data['title'] + ' #Shorts')
     data.setdefault('tags', ['Trump', 'MAGA', 'Paul Revere Media', 'Shorts'])
     data.setdefault('mood', 'epic')
-    data.setdefault('video_keywords', ['American flags MAGA rally', 'Trump rally patriotic crowd', 'Americana dramatic golden light'])
     return data
 
 def verify_channel(cfg):
@@ -146,7 +143,6 @@ def produce(job, cfg, editorial=None, upload=False, publish_at=None, self_test=F
             state['audio_done'] = True
             state['audio_version'] = 'mascot-ready-v4'
             atomic_json(state_path, state)
-        state['clips'] = {}
         atomic_json(state_path, state)
         os.environ['PAUL_REVERE_CURRENT_TITLE'] = content['title']
         os.environ['PAUL_REVERE_CLOSING_WORDS'] = str(len(content.get('closing_script', '').split()) or 35)
@@ -154,8 +150,8 @@ def produce(job, cfg, editorial=None, upload=False, publish_at=None, self_test=F
         if state.get('renderer_version') != 'mascot-approved-cels-20261015-r1':
             state['render_done'] = False
         if not state.get('render_done') or not video.exists():
-            from moduli.montaggio import monta_video
-            monta_video(str(audio), list(state['clips']), state['clips'], str(video), mood=content.get('mood', 'epic'), captions_text=content['script'])
+            from moduli.shorts import render_short
+            render_short(str(audio), str(video), mood=content.get('mood', 'epic'), captions_text=content['script'])
             state['render_done'] = True
             state['renderer_version'] = 'mascot-approved-cels-20261015-r1'
             atomic_json(state_path, state)

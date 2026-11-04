@@ -103,14 +103,3 @@ def synthesize(text, output):
     dest = Path(output)
     dest.parent.mkdir(parents=True, exist_ok=True)
     subprocess.run([ffmpeg_path(), '-y', '-v', 'error', '-threads', '2', '-filter_threads', '1', '-i', str(wav), '-af', 'loudnorm=I=-14:TP=-1.5:LRA=11', '-ar', '48000', '-ac', '2', '-c:a', 'libmp3lame', '-b:a', '192k', str(dest)], check=True, capture_output=True, timeout=180)
-if __name__ == '__main__':
-    import argparse
-    parser = argparse.ArgumentParser()
-    parser.add_argument('command', choices=['design', 'preview'])
-    args = parser.parse_args()
-    if args.command == 'design':
-        print('Designed voice:', design()[0])
-    else:
-        dest = ROOT / 'voice-preview.mp3'
-        synthesize('This is a preview of the voice selected for this project.', dest)
-        print('Preview:', dest)

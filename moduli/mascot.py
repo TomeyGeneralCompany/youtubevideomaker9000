@@ -1,8 +1,5 @@
 """Reusable mascot animation: amplitude-driven talking and complete action poses."""
-import argparse
 import array
-import hashlib
-import json
 import math
 import os
 from pathlib import Path
@@ -11,8 +8,7 @@ import tempfile
 import wave
 from PIL import Image, ImageDraw, ImageFont
 VERSION = 'mascot-ready-v4'
-POSES = ('idle', 'talk_small', 'talk_big', 'point', 'puff', 'exhale')
-from moduli.runtime_profile import animation_directory, background, brand_name
+from moduli.runtime_profile import animation_directory, background
 SHEET = animation_directory() / 'poses.png'
 
 def load_poses(path=SHEET, size=860):
@@ -40,17 +36,6 @@ def speech_energy(audio, fps=30):
             values.append(math.sqrt(sum((x * x for x in samples)) / max(1, len(samples))))
     reference = sorted(values)[int(len(values) * 0.8)] if values else 1
     return [min(1, value / max(250, reference)) for value in values]
-
-def pose_at(t, energy, puff_start=75.0):
-    if puff_start <= t < puff_start + 1.1:
-        return 4
-    if puff_start + 1.1 <= t < puff_start + 2.5:
-        return 5
-    if energy < 0.1:
-        return 0
-    if int(t) % 13 in (4, 5):
-        return 3
-    return 2 if energy > 0.62 and int(t * 9) % 3 else 1
 
 def font(size):
     for name in ['assets/font_bold.ttf', '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf', '/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf']:
@@ -87,49 +72,6 @@ def stage(title, width=1080, height=1920):
         for i, line in enumerate(lines):
             d.text((width / 2, 180 + i * (f.size + 10)), line, font=f, fill='#202020', anchor='mm')
     return im
-
-def mouth_sprite(idle, t, energy):
-    """Animate only the mouth; hat, glasses, hands and feet stay pixel stable."""
-    sprite = idle.copy()
-    if energy < 0.1:
-        return sprite
-    scale = sprite.width / 512
-    shape = int(t * 11) % 4
-    openness = (0.32, 0.78, 1.0, 0.5)[shape] * min(1, energy / 0.45)
-    cx = 285 * scale
-    top = 251 * scale
-    half = (18 if shape != 3 else 12) * scale
-    height = (7 + 23 * openness) * scale
-    draw = ImageDraw.Draw(sprite)
-    draw.ellipse((cx - half - 3 * scale, top - 2 * scale, cx + half + 3 * scale, top + height + 3 * scale), fill='#ffffff')
-    draw.ellipse((cx - half, top, cx + half, top + height), fill='#61091a')
-    if height > 14 * scale:
-        draw.ellipse((cx - half * 0.48, top + height * 0.68, cx + half * 0.55, top + height * 0.92), fill='#ef4559')
-    if shape != 3:
-        draw.rounded_rectangle((cx - half * 0.62, top + 2 * scale, cx + half * 0.62, top + 5 * scale), radius=scale, fill='white')
-    return sprite
-
-def frame_at(base, poses, t, energy, puff_start=75):
-    im = base.copy().convert('RGBA')
-    if puff_start <= t < puff_start + 1.1:
-        sprite = poses[4]
-    elif puff_start + 1.1 <= t < puff_start + 2.5:
-        sprite = poses[5]
-    else:
-        sprite = mouth_sprite(poses[0], t, energy)
-    im.alpha_composite(sprite, (110, 475))
-    if puff_start + 1.1 <= t < puff_start + 2.5:
-        layer = Image.new('RGBA', im.size)
-        d = ImageDraw.Draw(layer)
-        elapsed = t - puff_start - 1.1
-        for k in range(4):
-            px = 790 + elapsed * 62 + k * 22
-            py = 805 - elapsed * 95 - k * 24
-            r = 12 + elapsed * 18 + k * 3
-            alpha = round(max(0, 1 - elapsed / 1.6) * 95)
-            d.ellipse((px - r, py - r, px + r, py + r), fill=(220, 247, 248, alpha))
-        im = Image.alpha_composite(im, layer)
-    return im.convert('RGB')
 
 def render_mascot(audio, output, title='', duration=90, fps=30, sheet=SHEET, on_progress=None):
     from moduli.ffmpeg_utils import ffmpeg_path
@@ -177,17 +119,6 @@ def mascot_cover(title, output, sheet=SHEET):
     d.text(((1080 - f.getlength(text)) / 2, 1510), text, font=f, fill='#f2c55b')
     im.convert('RGB').save(output, quality=92)
 
-def preview(output):
-    poses = load_poses(size=520)
-    base = stage('MASCOT ANIMATION PREVIEW').resize((648, 1152), Image.Resampling.LANCZOS)
-    frames = []
-    for i in range(72):
-        t = i / 12
-        energy = 0 if t < 0.7 else 0.5 + 0.4 * math.sin(t * 14)
-        full = frame_at(stage('MASCOT ANIMATION PREVIEW'), load_poses(), t, energy, puff_start=3.1)
-        frames.append(full.resize((360, 640), Image.Resampling.LANCZOS))
-    frames[0].save(output, save_all=True, append_images=frames[1:], duration=83, loop=0, optimize=False)
-
 def generate_host_audio(content, output):
     """Narrate all words, with a 2.5-second silent cigar beat before the closing."""
     from moduli.audio import genera_audio
@@ -214,7 +145,7 @@ def generate_host_audio(content, output):
         subprocess.run([ffmpeg_path(), '-y', '-nostdin', '-v', 'error', '-i', str(root / 'body.wav'), '-f', 'lavfi', '-t', '2.5', '-i', 'anullsrc=r=48000:cl=stereo', '-i', str(root / 'closing.wav'), '-filter_complex', '[0:a][1:a][2:a]concat=n=3:v=0:a=1[a]', '-map', '[a]', '-ar', '48000', '-ac', '2', '-c:a', 'libmp3lame', '-b:a', '192k', str(output)], check=True, capture_output=True, timeout=180)
 
 def write_host_srt(script, path, closing_words=35):
-    from moduli.sottotitoli import _timestamp
+    from moduli.media_tools import _timestamp
     words = script.split()
     lines = []
     count = 0
@@ -227,10 +158,5 @@ def write_host_srt(script, path, closing_words=35):
             lines.append(f"{count}\n{_timestamp(start)} --> {_timestamp(end)}\n{' '.join(group)}\n")
     Path(path).write_text('\n'.join(lines), encoding='utf-8')
     return str(path)
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--preview', required=True)
-    args = parser.parse_args()
-    preview(args.preview)
 from moduli.mascot_walk import install as _install_walking_landscape
 _install_walking_landscape(globals())
