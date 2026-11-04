@@ -1,5 +1,6 @@
 """Minimal FFmpeg and music helpers for local mascot composition."""
 import os, glob, random
+from moduli.ffmpeg_utils import ffmpeg_path as _ffmpeg
 FFMPEG_THREADS = max(1, int(os.environ.get('FFMPEG_THREADS', '2')))
 X264_CRF = int(os.environ.get('X264_CRF', '23'))
 X264_PRESET = os.environ.get('X264_PRESET', 'fast')

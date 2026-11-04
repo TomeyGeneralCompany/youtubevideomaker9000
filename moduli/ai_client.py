@@ -19,7 +19,7 @@ GEMINI_MODEL = os.environ.get('GEMINI_MODEL', 'gemini-3.8-flash')
 OLLAMA_CLOUD_URL = 'https://ollama.com/api/chat'
 OLLAMA_CLOUD_MODEL = os.environ.get('OLLAMA_CLOUD_MODEL', 'nemotron-3-super:cloud')
 OLLAMA_LOCAL_URL = 'http://localhost:11434/api/chat'
-OLLAMA_LOCAL_MODEL = os.environ.get('OLLAMA_LOCAL_MODEL', 'llama3.2')
+OLLAMA_LOCAL_MODEL = os.environ.get('OLLAMA_LOCAL_MODEL', 'qwen3:4b')
 
 def _openrouter(messages: list, max_tokens: int=4096) -> str:
     api_key = os.environ.get('OPENROUTER_API_KEY', '')
@@ -114,9 +114,57 @@ def _ollama_cloud(messages: list, max_tokens: int=8192) -> str:
     modello = os.environ.get('OLLAMA_CLOUD_MODEL', OLLAMA_CLOUD_MODEL)
     return _chat_ollama(OLLAMA_CLOUD_URL, modello, messages, max_tokens, headers={'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json'}, think=False)
 
-def _ollama_local(messages: list, max_tokens: int=8192) -> str:
-    modello = os.environ.get('OLLAMA_LOCAL_MODEL', OLLAMA_LOCAL_MODEL)
-    return _chat_ollama(OLLAMA_LOCAL_URL, modello, messages, max_tokens)
+def _ollama_local(messages: list, max_tokens: int = 8192) -> str:
+    import re, json
+    copied = [dict(m) for m in messages]
+    if copied:
+        copied[-1]['content'] += '\n/no_think'
+    payload = {'model': 'qwen3:4b', 'messages': copied,
+               'stream': False, 'think': False, 'keep_alive': 0,
+               'options': {'num_ctx': 8192, 'num_predict': min(max_tokens, 4096),
+                           'num_thread': 4, 'temperature': 0.6}}
+    if copied and 'json' in copied[-1]['content'].lower():
+        payload['format'] = 'json'
+        prompt = copied[-1]['content']
+        if 'closing_script' in prompt:
+            strings = ['title', 'description', 'script', 'mood',
+                       'thumbnail_phrase', 'closing_script']
+            props = {key: {'type': 'string'} for key in strings}
+            for key in ['tags', 'video_keywords']:
+                props[key] = {'type': 'array', 'items': {'type': 'string'}}
+            fact = {key: {'type': 'string'} for key in
+                    ['source_id', 'claim', 'quote', 'value', 'period']}
+            props['facts'] = {'type': 'array', 'items': {
+                'type': 'object', 'properties': fact,
+                'required': list(fact), 'additionalProperties': False}}
+            payload['format'] = {'type': 'object', 'properties': props,
+                                 'required': list(props), 'additionalProperties': False}
+        elif '"script"' in prompt:
+            payload['format'] = {'type': 'object',
+                                 'properties': {'script': {'type': 'string'}},
+                                 'required': ['script'], 'additionalProperties': False}
+        if isinstance(payload['format'], dict):
+            copied[-1]['content'] += '\nRequired JSON schema: ' + json.dumps(payload['format']) + '\n/no_think'
+    print('[AI] Local Qwen3 writing; please allow several minutes.', flush=True)
+    try:
+        response = requests.post(OLLAMA_LOCAL_URL, json=payload, timeout=(10, 1800))
+        response.raise_for_status()
+        data = response.json()
+        if data.get('done_reason') == 'length':
+            raise RuntimeError('Local writer output truncated; rejected before narration')
+        text = (data.get('message', {}).get('content') or '').strip()
+        if '<think>' in text and '</think>' not in text:
+            raise RuntimeError('Local writer returned incomplete thinking text')
+        text = re.sub(r'<think>.*?</think>', '', text, flags=re.S).strip()
+        if not text:
+            raise RuntimeError('Local writer returned no final answer')
+        return text
+    finally:
+        try:
+            requests.post('http://127.0.0.1:11434/api/generate',
+                          json={'model': 'qwen3:4b', 'keep_alive': 0}, timeout=15)
+        except Exception:
+            pass
 _PROVIDERS = {'openrouter': _openrouter, 'gemini': _gemini, 'ollama_cloud': _ollama_cloud, 'ollama_local': _ollama_local}
 
 def _primary(messages: list, max_tokens: int=8192) -> str:
@@ -150,7 +198,7 @@ def _non_vuota(testo: str) -> str:
         raise RispostaVuota('empty response from the primary provider')
     return testo
 
-def chat(prompt: str, system: str=None, max_tokens: int=8192) -> str:
+def chat(prompt: str, system: str = None, max_tokens: int = 8192) -> str:
     messages = []
     if system:
         messages.append({'role': 'system', 'content': system})
@@ -158,10 +206,14 @@ def chat(prompt: str, system: str=None, max_tokens: int=8192) -> str:
     try:
         return _non_vuota(_primary(messages, max_tokens))
     except Exception as e:
-        from moduli.quota_control import defer_if_daily_quota
-        defer_if_daily_quota(e)
-        print(f'[AI] Primary failed ({e}), trying fallback...', flush=True)
-        return _fallback(messages, max_tokens)
+        from moduli.quota_control import defer_if_daily_quota, QuotaPaused
+        try:
+            defer_if_daily_quota(e)
+        except QuotaPaused:
+            print('[AI] Gemini quota paused; using local Qwen3.', flush=True)
+            return _non_vuota(_ollama_local(messages, max_tokens))
+        print('[AI] Primary unavailable; trying fallback.', flush=True)
+        return _non_vuota(_fallback(messages, max_tokens))
 
 def chat_ollama(prompt: str, system: str=None, max_tokens: int=8192) -> str:
     return chat(prompt, system, max_tokens)
