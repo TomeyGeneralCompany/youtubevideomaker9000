@@ -1,0 +1,35 @@
+{
+  "revision": "b7ee2e8c7459c3bea99da23e3d178125a7d1713c",
+  "files": [
+    {
+      "rfilename": "qwen-talker-0.6b-base-Q4_K_M.gguf",
+      "blobId": "f28d720844f84143dbb8f1adbb125991222f6069",
+      "size": 628905056,
+      "lfs": {
+        "sha256": "4b468ec7b1f62b90ef4ca316c0aa57deadfd54b2cf9651703ea753cedaf04226",
+        "size": 628905056,
+        "pointerSize": 134
+      }
+    },
+    {
+      "rfilename": "qwen-talker-1.7b-voicedesign-Q4_K_M.gguf",
+      "blobId": "0a03b7d37e873af937819b9a6f40e6c3d8979a0b",
+      "size": 1182630816,
+      "lfs": {
+        "sha256": "7605ed0cc5e72059f27468c27f70c070e05d1cc0c7b1c76bfb9cba717a59eee3",
+        "size": 1182630816,
+        "pointerSize": 135
+      }
+    },
+    {
+      "rfilename": "qwen-tokenizer-12hz-Q8_0.gguf",
+      "blobId": "964800f9dfbb4b52ed07b1e0b1b3bf38a6db52d1",
+      "size": 291150624,
+      "lfs": {
+        "sha256": "1883beeed99348fc35e23dd225e9082f93f6f8c109330a33d935baa8acdbfd94",
+        "size": 291150624,
+        "pointerSize": 134
+      }
+    }
+  ]
+}

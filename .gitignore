@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+.venv/
+.env
+!.env.example
+token.json
+credentials.json
+client_secret*.json
+voice-profile.json
+media-profile.json
+!examples/voice-profile.json
+!examples/media-profile.json
+cache/
+runs/
+output/
+logs/
+assets/
