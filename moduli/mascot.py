@@ -144,19 +144,5 @@ def generate_host_audio(content, output):
         fit_narration(root / 'closing.mp3', root / 'closing.wav', target=12.5)
         subprocess.run([ffmpeg_path(), '-y', '-nostdin', '-v', 'error', '-i', str(root / 'body.wav'), '-f', 'lavfi', '-t', '2.5', '-i', 'anullsrc=r=48000:cl=stereo', '-i', str(root / 'closing.wav'), '-filter_complex', '[0:a][1:a][2:a]concat=n=3:v=0:a=1[a]', '-map', '[a]', '-ar', '48000', '-ac', '2', '-c:a', 'libmp3lame', '-b:a', '192k', str(output)], check=True, capture_output=True, timeout=180)
 
-def write_host_srt(script, path, closing_words=35):
-    from moduli.media_tools import _timestamp
-    words = script.split()
-    lines = []
-    count = 0
-    for section, offset, length in [(words[:-closing_words], 0, 75), (words[-closing_words:], 77.5, 12.5)]:
-        for i in range(0, len(section), 6):
-            group = section[i:i + 6]
-            count += 1
-            start = offset + length * i / len(section)
-            end = offset + length * (i + len(group)) / len(section)
-            lines.append(f"{count}\n{_timestamp(start)} --> {_timestamp(end)}\n{' '.join(group)}\n")
-    Path(path).write_text('\n'.join(lines), encoding='utf-8')
-    return str(path)
 from moduli.mascot_walk import install as _install_walking_landscape
 _install_walking_landscape(globals())

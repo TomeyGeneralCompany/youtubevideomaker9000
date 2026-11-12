@@ -84,5 +84,9 @@ class PipelineTests(unittest.TestCase):
         shorts.render_short(source,self.root/'short.mp4',captions_text=' '.join(['example']*225))
     info=shorts.validate_short(self.root/'short.mp4');self.assertTrue(info)
     self.assertTrue((self.root/'short.mp4').is_file())
+    music=self.root/'chosen music.wav';wav_file(music,1)
+    with patch.object(mascot,'render_mascot',side_effect=AssertionError('Expected cached mascot layer')):
+        shorts.render_short(source,self.root/'music-short.mp4',custom_music=music)
+    self.assertTrue(shorts.validate_short(self.root/'music-short.mp4'))
 
 if __name__=='__main__':unittest.main()

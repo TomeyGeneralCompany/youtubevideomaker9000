@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Local Video Studio</title>
+<style>
+body{font:16px system-ui;color:#edf6f3;background:#10201f;max-width:760px;margin:36px auto;padding:0 20px}
+section,form{background:#1a302f;border:1px solid #416563;border-radius:12px;padding:20px;margin:16px 0}
+h1,h2{margin-top:0} label{display:block;margin:12px 0} input:not([type=checkbox]),textarea{box-sizing:border-box;width:100%;padding:9px;background:#10201f;color:inherit;border:1px solid #729a96;border-radius:4px} button{padding:9px 15px;background:#efc878;color:#10201f;border:0;border-radius:4px;font-weight:bold} button:disabled{opacity:.5} pre{white-space:pre-wrap;overflow-wrap:anywhere} video{max-width:100%;max-height:480px} a{color:#efc878}
+</style>
+<h1>Local Video Studio</h1>
+<section><h2>Local setup</h2><pre id="setup">Checking workspace…</pre></section>
+<form id="form">
+<h2>Make a video</h2>
+<label>Title for your script<input name="title"></label>
+<label>Script (leave blank to use local Qwen)<textarea name="script" rows="6"></textarea></label>
+<label><input name="research" type="checkbox"> Fetch articles for automatic writing</label>
+<label>Background music file (optional)<input name="music"></label>
+<label>Music volume (0–1)<input name="volume" type="number" min="0" max="1" step=".01" value=".1" required></label>
+<label><input name="captions" type="checkbox" checked> Burn captions into video</label>
+<details><summary>Media tool paths</summary>
+<label>FFmpeg path<input name="ffmpeg"></label>
+<label>FFprobe path<input name="ffprobe"></label>
+</details>
+<p><button id="start">Start production</button></p>
+</form>
+<section><h2 id="stage">Production status</h2><p id="message" role="status"></p>
+<button id="resume" hidden>Resume this job</button>
+<details id="script-panel" hidden><summary>Script used</summary><pre id="script"></pre></details>
+<pre id="log"></pre><video id="preview" controls hidden></video>
+<p><a id="download" hidden download="short.mp4">Download video</a></p></section>
+<script>
+const $ = id => document.getElementById(id);
+let job = localStorage.getItem('local-studio-job');
+let timer;
+fetch('/setup').then(r=>r.json()).then(d=>{$('setup').textContent=Object.entries(d).map(([k,v])=>k+': '+v).join('\n')}).catch(()=>{$('setup').textContent='Unable to check local setup.'});
+async function status() {
+  const r = await fetch('/status/'+job);
+  if (!r.ok) return;
+  const s = await r.json();
+  $('stage').textContent=s.stage;
+  $('log').textContent=s.log;
+  $('script-panel').hidden=!s.script;
+  $('script').textContent=s.script||'';
+  $('start').disabled=s.running;
+  $('resume').hidden=s.running||s.ready;
+  if(s.ready){
+    $('preview').hidden=false; $('preview').src='/video/'+job;
+    $('download').hidden=false; $('download').href='/video/'+job;
+    $('message').textContent='Video ready.';
+  } else if(s.running) {
+    $('message').textContent='Working locally…';
+    timer=setTimeout(()=>status().catch(report), 1500);
+  } else {
+    $('message').textContent='Job stopped. Check the log, then resume or start a new job.';
+  }
+}
+function report(e){$('message').textContent=e.message; $('start').disabled=false;}
+async function start(data) {
+  $('start').disabled=true;
+  const r=await fetch('/jobs',{method:'POST',headers:{'Content-Type':'application/json','X-Studio-Token':'__STUDIO_TOKEN__'},body:JSON.stringify(data)});
+  const s=await r.json();
+  if(!r.ok) throw Error(s.error||'Could not start job.');
+  clearTimeout(timer);
+  job=s.job; localStorage.setItem('local-studio-job',job);
+  $('preview').hidden=true; $('preview').removeAttribute('src'); $('preview').load();
+  $('download').hidden=true;
+  await status();
+}
+$('form').onsubmit=e=>{
+  e.preventDefault();
+  start(Object.fromEntries(new FormData(e.currentTarget))).catch(report);
+};
+$('resume').onclick=()=>start({resume:job}).catch(report);
+if(job)status().catch(report);
+</script>
+</html>

@@ -2,14 +2,11 @@ from moduli.runtime_profile import animation_directory, brand_name
 'Paul Revere Media: fixed-format Shorts and offline recovery primitives.'
 import hashlib
 import json
-import math
 import os
 from pathlib import Path
-import random
 import subprocess
 import tempfile
 import time
-import wave
 DURATION = 90.0
 WIDTH, HEIGHT, FPS = (1080, 1920, 30)
 
@@ -80,16 +77,16 @@ def _ass_time(seconds):
     s, c = divmod(centis, 100)
     return f'{h}:{m:02}:{s:02}.{c:02}'
 
-def write_ass(script, path, cigar_beat=False, closing_words=35):
+def write_ass(script, path, cigar_beat=False, closing_words=35, duration=DURATION):
     import textwrap
     words = (script or '').split()
     if not words:
         raise ValueError('Caption script is empty')
     header = '[Script Info]\nScriptType: v4.00+\nPlayResX: 1080\nPlayResY: 1920\nWrapStyle: 0\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Brand,DejaVu Sans,42,&H0057D7FF,&H0000D7FF,&H00101326,&H90000000,-1,0,0,0,100,100,0,0,1,3,1,8,100,180,160,1\nStyle: Main,DejaVu Sans,58,&H00FFFFFF,&H0000D7FF,&H00101326,&H90000000,-1,0,0,0,100,100,0,0,1,4,2,2,100,230,460,1\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n'
     lines = [header, f'Dialogue: 1,0:00:00.00,0:01:30.00,Brand,,0,0,0,,{brand_name()}\n']
-    sections = [(words, 0.0, DURATION)]
+    sections = [(words, 0.0, duration)]
     if cigar_beat:
-        sections = [(words[:-closing_words], 0.0, 75.0), (words[-closing_words:], 77.5, 12.5)]
+        sections = [(words[:-closing_words], 0.0, 75.0), (words[-closing_words:], 77.5, duration - 77.5)]
     for section, offset, length in sections:
         if not section:
             continue
@@ -101,42 +98,16 @@ def write_ass(script, path, cigar_beat=False, closing_words=35):
             lines.append(f'Dialogue: 0,{_ass_time(start)},{_ass_time(end)},Main,,0,0,0,,{text}\n')
     Path(path).write_text(''.join(lines), encoding='utf-8')
 
-def local_music(path):
-    """An original low-volume dramatic chord/drum bed; no downloaded music."""
-    import array
-    rate = 16000
-    samples = array.array('h')
-    rng = random.Random(1776)
-    chords = [(110, 130.81, 164.81), (87.31, 110, 130.81), (98, 123.47, 146.83), (82.41, 110, 130.81)]
-    for n in range(int(rate * DURATION)):
-        t = n / rate
-        chord = chords[int(t / 6) % len(chords)]
-        beat = t % 0.6
-        kick = math.sin(2 * math.pi * (55 * beat + 28 * (1 - math.exp(-beat * 20)))) * math.exp(-beat * 22)
-        hit = rng.uniform(-1, 1) * math.exp(-beat * 45)
-        swell = 0.7 + 0.3 * math.sin(t * 0.5)
-        tone = sum((math.sin(2 * math.pi * f * t) for f in chord)) / 3
-        fade = min(1, t / 2, (DURATION - t) / 3)
-        samples.append(int(6500 * fade * (0.45 * tone * swell + 0.4 * kick + 0.08 * hit)))
-    if os.sys.byteorder != 'little':
-        samples.byteswap()
-    with wave.open(str(path), 'wb') as out:
-        out.setnchannels(1)
-        out.setsampwidth(2)
-        out.setframerate(rate)
-        out.writeframes(samples.tobytes())
-    return str(path)
-
 def render_short(audio_path, output_path, mood=None, on_progress=None, custom_music=None, captions_text=None):
-    from moduli import media_tools as m
+    from moduli.ffmpeg_utils import ffmpeg_path
     destination = Path(output_path).absolute()
     destination.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='paul-revere-short_') as root:
         root = Path(root)
         narration = fit_narration(audio_path, root / 'narration.wav')
         ass = root / 'captions.ass'
-        write_ass(captions_text, ass, cigar_beat=True, closing_words=int(os.environ.get('PAUL_REVERE_CLOSING_WORDS', '35')))
-        segments = []
+        if captions_text:
+            write_ass(captions_text, ass, cigar_beat=True, closing_words=int(os.environ.get('PAUL_REVERE_CLOSING_WORDS', '35')), duration=float(probe(narration)['format']['duration']))
         from moduli.mascot import render_mascot
         title = os.environ.get('PAUL_REVERE_CURRENT_TITLE', '')
         layer = destination.parent / 'mascot-layer.mkv'
@@ -156,15 +127,32 @@ def render_short(audio_path, output_path, mood=None, on_progress=None, custom_mu
             if abs(float(probe(layer)['format']['duration']) - 90) > 1 / FPS:
                 raise ValueError('Incomplete mascot animation layer')
             atomic_json(metadata, {'signature': signature})
-        segments = [layer]
-        listing = root / 'segments.txt'
-        listing.write_text(''.join((m._concat_file_line(str(s)) for s in segments)))
-        music = custom_music if custom_music and Path(custom_music).exists() else m._pick_music(mood)
-        music = music or local_music(root / 'dramatic-bed.wav')
-        filters = root / 'filter.txt'
-        filters.write_text(f'[0:v]ass=captions.ass[v];[1:a]volume=1[n];[2:a]volume={m._bg_volume()},atrim=duration=90[b];[n][b]amix=inputs=2:duration=first:normalize=0,loudnorm=I=-14:TP=-1.5:LRA=11,apad,atrim=duration=90[a]')
+        music = Path(custom_music).expanduser().resolve() if custom_music else None
+        if music and not music.is_file():
+            raise ValueError(f'Music file does not exist: {music}')
+        inputs = ['-i', str(layer), '-i', narration]
+        filters = []
+        video_map = '0:v'
+        if captions_text:
+            filters.append('[0:v]ass=captions.ass[v]')
+            video_map = '[v]'
+        audio_source = '[1:a]'
+        if music:
+            inputs.extend(['-stream_loop', '-1', '-i', str(music)])
+            volume = float(os.getenv('TUBE_MUSIC_VOLUME', '0.1'))
+            if not 0 <= volume <= 1:
+                raise ValueError('Music volume must be between 0 and 1.')
+            filters.extend([f'[2:a]volume={volume},atrim=duration=90[bed]',
+                            '[1:a][bed]amix=inputs=2:duration=first:normalize=0[mix]'])
+            audio_source = '[mix]'
+        filters.append(audio_source + 'loudnorm=I=-14:TP=-1.5:LRA=11,apad,atrim=duration=90[a]')
         tmp = root / 'complete.mp4'
-        command = [m._ffmpeg(), '-y', '-nostdin', '-v', 'error', '-f', 'concat', '-safe', '0', '-i', str(listing), '-i', narration, '-stream_loop', '-1', '-i', str(Path(music).absolute()), '-filter_complex_script', str(filters), '-map', '[v]', '-map', '[a]', '-c:v', 'libx264', '-preset', m.X264_PRESET, '-crf', str(m.X264_CRF), '-threads', str(m.FFMPEG_THREADS), '-pix_fmt', 'yuv420p', '-r', '30', '-t', '90', '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-ac', '2', '-movflags', '+faststart', str(tmp)]
+        command = [ffmpeg_path(), '-y', '-nostdin', '-v', 'error', *inputs,
+                   '-filter_complex', ';'.join(filters), '-map', video_map, '-map', '[a]',
+                   '-c:v', 'libx264', '-preset', os.getenv('X264_PRESET', 'fast'),
+                   '-crf', os.getenv('X264_CRF', '23'), '-threads', os.getenv('FFMPEG_THREADS', '2'),
+                   '-pix_fmt', 'yuv420p', '-r', '30', '-t', '90', '-c:a', 'aac', '-b:a', '192k',
+                   '-ar', '48000', '-ac', '2', '-movflags', '+faststart', str(tmp)]
         try:
             subprocess.run(command, cwd=root, check=True, capture_output=True, timeout=1800)
             validate_short(tmp)

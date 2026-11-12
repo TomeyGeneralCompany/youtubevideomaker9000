@@ -98,7 +98,7 @@ def verify_channel(cfg):
 def produce(job, cfg, editorial=None, upload=False, publish_at=None, self_test=False):
     from paul_revere_animation_guard import verify_approved_animation
     verify_approved_animation()
-    from moduli.shorts import atomic_json, retry, validate_short, probe
+    from moduli.shorts import atomic_json, retry, validate_short
     directory = ROOT / 'runs' / job
     directory.mkdir(parents=True, exist_ok=True)
     state_path = directory / 'checkpoint.json'
@@ -112,6 +112,9 @@ def produce(job, cfg, editorial=None, upload=False, publish_at=None, self_test=F
     if state.get('upload_started'):
         raise RuntimeError(f'Upload outcome uncertain for {job}. Check YouTube Studio, then use reconcile. Automatic re-upload is blocked to avoid duplicates.')
     try:
+        from moduli.ffmpeg_utils import ffmpeg_path, ffprobe_path
+        ffmpeg_path()
+        ffprobe_path()
         if 'content' not in state:
             if self_test:
                 content = json.loads((ROOT / 'assets/animation/demo.json').read_text())
@@ -119,7 +122,7 @@ def produce(job, cfg, editorial=None, upload=False, publish_at=None, self_test=F
                 content = read_editorial(editorial)
             else:
                 from moduli.media_research import collect_evidence, write_mascot_content
-                packet = collect_evidence()
+                packet = {'sources': []} if os.getenv('TUBE_OFFLINE') == '1' else collect_evidence()
                 atomic_json(directory / 'research.json', packet)
                 topic = 'Trump and MAGA accomplishments, patriotic celebration and supporter culture'
                 content = retry(lambda: write_mascot_content(topic, packet))
@@ -151,14 +154,12 @@ def produce(job, cfg, editorial=None, upload=False, publish_at=None, self_test=F
             state['render_done'] = False
         if not state.get('render_done') or not video.exists():
             from moduli.shorts import render_short
-            render_short(str(audio), str(video), mood=content.get('mood', 'epic'), captions_text=content['script'])
+            render_short(str(audio), str(video), custom_music=os.getenv('TUBE_MUSIC_FILE'), captions_text=content['script'] if os.getenv('TUBE_CAPTIONS', '1') == '1' else None)
             state['render_done'] = True
             state['renderer_version'] = 'mascot-approved-cels-20261015-r1'
             atomic_json(state_path, state)
         info = validate_short(video)
         atomic_json(directory / 'validation.json', info)
-        from moduli.mascot import write_host_srt
-        write_host_srt(content['script'], str(directory / 'captions.srt'), closing_words=int(os.environ['PAUL_REVERE_CLOSING_WORDS']))
         thumbnail = directory / 'thumbnail.jpg'
         if not thumbnail.exists() or state.get('cover_version') != 'mascot-approved-cels-20261015-r1':
             from moduli.mascot import mascot_cover

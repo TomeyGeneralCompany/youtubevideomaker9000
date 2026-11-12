@@ -1,20 +1,26 @@
-"""Validate model output used by the retained research pipeline."""
+"""Decode the local writer's structured reply without recovering fragments."""
 import json
 
-def _parse_json(text: str) -> dict:
-    decoder = json.JSONDecoder()
-    start = text.find('{')
-    if start < 0:
-        raise ValueError('No JSON found in model response')
+
+def decode_script(reply):
     try:
-        data, _ = decoder.raw_decode(text[start:])
-    except json.JSONDecodeError as e:
-        snippet = text[:500].replace('\n', '\\n')
-        if e.pos >= len(text[start:]) - 2:
-            raise ValueError(f'Model response truncated (incomplete JSON): the script exceeds the output limit. Reduce target_duration_minutes or increase AI_MAX_TOKENS in .env. Details: {e}') from e
-        raise ValueError(f'Invalid JSON from model: {e}; response starts with: {snippet}') from e
-    required = {'title', 'description', 'tags', 'script'}
-    missing = required - set(data)
-    if missing:
-        raise ValueError(f"Model JSON missing required fields: {', '.join(sorted(missing))}")
-    return data
+        document = json.loads(reply)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f'Qwen did not return a complete JSON document ({exc.msg}).') from exc
+    if type(document) is not dict:
+        raise ValueError('Qwen must return a single JSON object.')
+    fields = ('title', 'description', 'script', 'mood', 'thumbnail_phrase', 'closing_script')
+    for key in fields:
+        if not isinstance(document.get(key), str) or not document[key].strip():
+            raise ValueError(f'Qwen reply needs a nonempty text field: {key}.')
+    tags = document.get('tags')
+    if not isinstance(tags, list) or any(not isinstance(tag, str) for tag in tags):
+        raise ValueError('Qwen reply needs a list of text tags.')
+    facts = document.get('facts')
+    keys = ('source_id', 'claim', 'quote', 'value', 'period')
+    if not isinstance(facts, list) or any(
+        not isinstance(fact, dict) or any(not isinstance(fact.get(key), str) for key in keys)
+        for fact in facts
+    ):
+        raise ValueError('Qwen reply needs a list of structured facts.')
+    return document

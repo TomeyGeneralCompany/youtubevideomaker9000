@@ -1,31 +1,28 @@
-"""Locate FFmpeg and FFprobe for both narration and video editing."""
+"""Resolve and check the local media tools once per configuration."""
+from functools import lru_cache
 import os
-import shutil
-_CANDIDATI_FFMPEG = ['C:\\ffmpeg\\bin\\ffmpeg.exe', 'C:\\Program Files\\ffmpeg\\bin\\ffmpeg.exe', 'C:\\ProgramData\\chocolatey\\bin\\ffmpeg.exe', '/usr/bin/ffmpeg', '/usr/local/bin/ffmpeg', '/opt/homebrew/bin/ffmpeg']
+from pathlib import Path
+from shutil import which
+from subprocess import DEVNULL, SubprocessError, run
 
-def ffmpeg_path() -> str:
-    """Locate FFmpeg using FFMPEG_PATH, PATH, then known locations; raise FileNotFoundError with setup instructions."""
-    env_path = os.environ.get('FFMPEG_PATH')
-    if env_path and os.path.exists(env_path):
-        return env_path
-    if shutil.which('ffmpeg'):
-        return 'ffmpeg'
-    for p in _CANDIDATI_FFMPEG:
-        if os.path.exists(p):
-            return p
-    raise FileNotFoundError('ffmpeg not found. Install it and add to PATH, or set FFMPEG_PATH=/path/to/ffmpeg')
 
-def ffprobe_path() -> str:
-    """Prefer FFprobe beside FFmpeg, otherwise search PATH."""
+@lru_cache
+def _find(tool, override, search_path):
+    executable = which(os.path.expanduser(override) if override else tool, path=search_path)
+    if executable is None:
+        raise RuntimeError(f'{tool} is missing. Install it or set {tool.upper()}_PATH.')
+    executable = str(Path(executable).absolute())
     try:
-        ff = ffmpeg_path()
-    except FileNotFoundError:
-        return 'ffprobe'
-    if ff != 'ffmpeg':
-        for nome in ('ffprobe.exe', 'ffprobe'):
-            candidato = os.path.join(os.path.dirname(ff), nome)
-            if os.path.exists(candidato):
-                return candidato
-    if shutil.which('ffprobe'):
-        return 'ffprobe'
-    return 'ffprobe'
+        run([executable, '-version'], stdout=DEVNULL, stderr=DEVNULL, check=True, timeout=5)
+    except (OSError, SubprocessError) as exc:
+        raise RuntimeError(f'Cannot run {tool} at {executable}') from exc
+    return executable
+
+
+def ffmpeg_path():
+    return _find('ffmpeg', os.getenv('FFMPEG_PATH'), os.getenv('PATH', os.defpath))
+
+
+def ffprobe_path():
+    search = os.pathsep.join((str(Path(ffmpeg_path()).parent), os.getenv('PATH', os.defpath)))
+    return _find('ffprobe', os.getenv('FFPROBE_PATH'), search)
