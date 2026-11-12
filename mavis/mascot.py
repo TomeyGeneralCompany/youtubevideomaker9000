@@ -8,7 +8,7 @@ import tempfile
 import wave
 from PIL import Image, ImageDraw, ImageFont
 VERSION = 'mascot-ready-v4'
-from moduli.runtime_profile import animation_directory, background
+from mavis.runtime_profile import animation_directory, background
 SHEET = animation_directory() / 'poses.png'
 
 def load_poses(path=SHEET, size=860):
@@ -74,7 +74,7 @@ def stage(title, width=1080, height=1920):
     return im
 
 def render_mascot(audio, output, title='', duration=90, fps=30, sheet=SHEET, on_progress=None):
-    from moduli.ffmpeg_utils import ffmpeg_path
+    from mavis.ffmpeg_utils import ffmpeg_path
     poses = load_poses(sheet)
     base = stage(title)
     energies = speech_energy(audio, fps)
@@ -121,9 +121,9 @@ def mascot_cover(title, output, sheet=SHEET):
 
 def generate_host_audio(content, output):
     """Narrate all words, with a 2.5-second silent cigar beat before the closing."""
-    from moduli.audio import genera_audio
-    from moduli.shorts import fit_narration
-    from moduli.ffmpeg_utils import ffmpeg_path
+    from mavis.audio import generate_audio
+    from mavis.shorts import fit_narration
+    from mavis.ffmpeg_utils import ffmpeg_path
     script = content['script']
     closing = content.get('closing_script', '').strip()
     if closing and script.rstrip().endswith(closing):
@@ -138,12 +138,12 @@ def generate_host_audio(content, output):
         raise ValueError('Narration needs both a main segment and closing')
     with tempfile.TemporaryDirectory(prefix='mascot-tts_') as root:
         root = Path(root)
-        genera_audio(body, str(root / 'body.mp3'))
-        genera_audio(closing, str(root / 'closing.mp3'))
+        generate_audio(body, str(root / 'body.mp3'))
+        generate_audio(closing, str(root / 'closing.mp3'))
         fit_narration(root / 'body.mp3', root / 'body.wav', target=75)
         fit_narration(root / 'closing.mp3', root / 'closing.wav', target=12.5)
         codec = ['-c:a', 'pcm_s16le'] if Path(output).suffix == '.wav' else ['-c:a', 'libmp3lame', '-b:a', '192k']
         subprocess.run([ffmpeg_path(), '-y', '-nostdin', '-v', 'error', '-i', str(root / 'body.wav'), '-f', 'lavfi', '-t', '2.5', '-i', 'anullsrc=r=48000:cl=stereo', '-i', str(root / 'closing.wav'), '-filter_complex', '[0:a][1:a][2:a]concat=n=3:v=0:a=1[a]', '-map', '[a]', '-ar', '48000', '-ac', '2', *codec, str(output)], check=True, capture_output=True, timeout=180)
 
-from moduli.mascot_walk import install as _install_walking_landscape
+from mavis.mascot_walk import install as _install_walking_landscape
 _install_walking_landscape(globals())

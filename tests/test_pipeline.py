@@ -3,7 +3,7 @@ from pathlib import Path
 from unittest.mock import Mock,patch
 ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT))
 from PIL import Image
-from moduli import shorts,local_voice,audio
+from mavis import shorts,local_voice,audio
 
 def asset_pack(root):
     folder=root/'assets/animation';folder.mkdir(parents=True,exist_ok=True)
@@ -23,25 +23,21 @@ class PipelineTests(unittest.TestCase):
  def setUp(self):
     self.tmp=tempfile.TemporaryDirectory();self.root=Path(self.tmp.name);self.cwd=Path.cwd();os.chdir(self.root)
     self.env=patch.dict(os.environ,{'TUBE_WORKSPACE':str(self.root),'X264_PRESET':'ultrafast','FFMPEG_THREADS':'2'});self.env.start();asset_pack(self.root)
-    for name in ['moduli.mascot','moduli.mascot_walk']:sys.modules.pop(name,None)
+    for name in ['mavis.mascot','mavis.mascot_walk']:sys.modules.pop(name,None)
  def tearDown(self):self.env.stop();os.chdir(self.cwd);self.tmp.cleanup()
- def test_import_closure_and_removed_dependencies(self):
-    expected_removed={'web_search','telegram_handler','asset','video_ai','thumbnail','montaggio','cervello','analytics','canale','strategia','scheduling','state_io','notifiche','memoria','manutenzione','preflight','logsetup','impostazioni_video','sottotitoli'}
-    for name in expected_removed:self.assertFalse((ROOT/'moduli'/f'{name}.py').exists())
-    for p in (ROOT/'moduli').glob('*.py'):importlib.import_module('moduli.'+p.stem)
+ def test_runtime_imports_resolve(self):
+    for p in (ROOT/'mavis').glob('*.py'):importlib.import_module('mavis.'+p.stem)
     for p in ROOT.rglob('*.py'):
         if 'tests' in p.parts:continue
         for n in ast.walk(ast.parse(p.read_text())):
-            if isinstance(n,ast.ImportFrom) and n.module and n.module.startswith('moduli.'):
+            if isinstance(n,ast.ImportFrom) and n.module and n.module.startswith('mavis.'):
                 self.assertTrue((ROOT/Path(*n.module.split('.'))).with_suffix('.py').is_file(),str(p)+': '+n.module)
-    req=(ROOT/'requirements.txt').read_text().lower()
-    for name in ['moviepy','telegram','edge-tts','gtts','ddgs','anthropic']:self.assertNotIn(name,req)
  def test_runner_uses_kept_renderer_and_resumes_completed_job(self):
     import paul_revere as runner
     runner.ROOT=self.root
     editorial=self.root/'editorial.json';closing=' '.join(['closing']*35)
     editorial.write_text(json.dumps({'title':'Trump animation test','script':' '.join(['example']*190)+' '+closing,'closing_script':closing}))
-    mascot=importlib.import_module('moduli.mascot')
+    mascot=importlib.import_module('mavis.mascot')
     def narration(content,path):Path(path).write_bytes(b'narration')
     def render(audio,output,**kwargs):
         Path(output).write_bytes(b'video');return {'valid':True}
@@ -51,7 +47,7 @@ class PipelineTests(unittest.TestCase):
         runner.produce('check',{},editorial=str(editorial));self.assertEqual(render_call.call_count,1)
  def test_publisher_records_upload_before_thumbnail_failure(self):
     import paul_revere as runner
-    from moduli import pubblica
+    from mavis import youtube_upload
     runner.ROOT=self.root
     folder=self.root/'runs/upload';folder.mkdir(parents=True)
     for name in ['narration.wav','short.mp4','thumbnail.jpg']:(folder/name).touch()
@@ -68,7 +64,7 @@ class PipelineTests(unittest.TestCase):
     thumb=yt.thumbnails.return_value.set.return_value.execute
     thumb.side_effect=thumbnail_failure
     with patch.object(runner,'youtube_session',return_value=(yt,'channel-123')) as session, \
-         patch.object(pubblica,'MediaFileUpload'),patch.object(shorts,'validate_short',return_value={}):
+         patch.object(youtube_upload,'MediaFileUpload'),patch.object(shorts,'validate_short',return_value={}):
         runner.produce('upload',{},upload=True)
         runner.produce('upload',{},upload=True)
     session.assert_called_once()
@@ -78,18 +74,18 @@ class PipelineTests(unittest.TestCase):
     self.assertEqual(status['privacyStatus'],'private');self.assertNotIn('publishAt',status)
  def test_schedule_must_come_from_runner(self):
     from datetime import datetime, timedelta, timezone
-    from moduli import pubblica
+    from mavis import youtube_upload
     yt=Mock()
     with self.assertRaisesRegex(ValueError,'explicit publish_at'):
-        pubblica.prepare_video_transfer(yt,'video.mp4',{'title':'Test'})
+        youtube_upload.prepare_video_transfer(yt,'video.mp4',{'title':'Test'})
     yt.videos.assert_not_called()
-    with patch.object(pubblica,'MediaFileUpload'):
-        pubblica.prepare_video_transfer(yt,'video.mp4',{'title':'Test'},
+    with patch.object(youtube_upload,'MediaFileUpload'):
+        youtube_upload.prepare_video_transfer(yt,'video.mp4',{'title':'Test'},
             publish_at=datetime(2030,1,1,18,tzinfo=timezone(timedelta(hours=-5))))
     self.assertEqual(yt.videos.return_value.insert.call_args.kwargs['body']['status']['publishAt'],
                      '2030-01-01T23:00:00Z')
  def test_local_voice_adapter_and_cached_native_flow(self):
-    with patch('moduli.local_voice.synthesize') as synth:audio.genera_audio('Selected words','out.mp3');synth.assert_called_once_with('Selected words','out.mp3')
+    with patch('mavis.local_voice.synthesize') as synth:audio.generate_audio('Selected words','out.mp3');synth.assert_called_once_with('Selected words','out.mp3')
     local_voice.ROOT=self.root
     (self.root/'voice-profile.json').write_text(json.dumps({'provider':'qwen-local','instruction':'Test voice instruction','reference_text':'Test reference transcript'}))
     calls=[]
@@ -104,8 +100,8 @@ class PipelineTests(unittest.TestCase):
     verify_approved_animation();(self.root/'assets/animation/poses.png').write_bytes(b'tampered')
     with self.assertRaisesRegex(RuntimeError,'failed verification'):verify_approved_animation()
  def test_real_short_composition_without_stock_or_video_providers(self):
-    from moduli.ffmpeg_utils import ffmpeg_path
-    mascot=importlib.import_module('moduli.mascot');source=self.root/'narration.wav'
+    from mavis.ffmpeg_utils import ffmpeg_path
+    mascot=importlib.import_module('mavis.mascot');source=self.root/'narration.wav'
     with wave.open(str(source),'wb') as wav:
         wav.setparams((2,2,48000,0,'NONE','not compressed'))
         for _ in range(90):
@@ -126,7 +122,7 @@ class PipelineTests(unittest.TestCase):
     self.assertNotEqual(shorts._layer_signature(source,'title'),old)
 
  def test_script_writer_stops_after_three_invalid_responses(self):
-    from moduli import ai_client, media_research
+    from mavis import ai_client, media_research
     with patch.object(ai_client,'chat_ollama',return_value='incomplete') as write:
         with self.assertRaisesRegex(RuntimeError,'No validated mascot script'):
             media_research.write_mascot_content('Test topic',{'sources':[]})

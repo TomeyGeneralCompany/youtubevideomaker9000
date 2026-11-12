@@ -69,7 +69,7 @@ def read_editorial(path):
     return data
 
 def youtube_session(cfg, *, authorize=False):
-    from moduli.google_auth import connect_youtube
+    from mavis.google_auth import connect_youtube
 
     def check_channel(client):
         channels = client.channels().list(part='snippet', mine=True).execute(num_retries=5).get('items', [])
@@ -86,7 +86,7 @@ def youtube_session(cfg, *, authorize=False):
 def produce(job, cfg, editorial=None, upload=False, publish_at=None, self_test=False):
     from paul_revere_animation_guard import verify_approved_animation
     verify_approved_animation()
-    from moduli.shorts import atomic_json, retry, validate_short
+    from mavis.shorts import atomic_json, retry, validate_short
     directory = ROOT / 'runs' / job
     directory.mkdir(parents=True, exist_ok=True)
     state_path = directory / 'checkpoint.json'
@@ -100,7 +100,7 @@ def produce(job, cfg, editorial=None, upload=False, publish_at=None, self_test=F
     if state.get('upload_started'):
         raise RuntimeError(f'Upload outcome uncertain for {job}. Check YouTube Studio, then use reconcile. Automatic re-upload is blocked to avoid duplicates.')
     try:
-        from moduli.ffmpeg_utils import ffmpeg_path, ffprobe_path
+        from mavis.ffmpeg_utils import ffmpeg_path, ffprobe_path
         ffmpeg_path()
         ffprobe_path()
         if 'content' not in state:
@@ -109,7 +109,7 @@ def produce(job, cfg, editorial=None, upload=False, publish_at=None, self_test=F
             elif editorial:
                 content = read_editorial(editorial)
             else:
-                from moduli.media_research import collect_evidence, write_mascot_content
+                from mavis.media_research import collect_evidence, write_mascot_content
                 packet = {'sources': []} if os.getenv('TUBE_OFFLINE') == '1' else collect_evidence()
                 atomic_json(directory / 'research.json', packet)
                 topic = 'Trump and MAGA accomplishments, patriotic celebration and supporter culture'
@@ -132,7 +132,7 @@ def produce(job, cfg, editorial=None, upload=False, publish_at=None, self_test=F
                 import shutil
                 shutil.copyfile(ROOT / 'assets/animation/demo-narration.mp3', audio)
             else:
-                from moduli.mascot import generate_host_audio
+                from mavis.mascot import generate_host_audio
                 retry(lambda: generate_host_audio(content, str(audio)))
             state['audio_done'] = True
             state['audio_version'] = 'mascot-ready-v4'
@@ -143,7 +143,7 @@ def produce(job, cfg, editorial=None, upload=False, publish_at=None, self_test=F
         if state.get('renderer_version') != 'mascot-approved-cels-20261015-r1':
             state['render_done'] = False
         if not state.get('render_done') or not video.exists():
-            from moduli.shorts import render_short
+            from mavis.shorts import render_short
             info = render_short(str(audio), str(video), custom_music=os.getenv('TUBE_MUSIC_FILE'), captions_text=content['script'] if os.getenv('TUBE_CAPTIONS', '1') == '1' else None)
             state['render_done'] = True
             state['renderer_version'] = 'mascot-approved-cels-20261015-r1'
@@ -153,14 +153,14 @@ def produce(job, cfg, editorial=None, upload=False, publish_at=None, self_test=F
         atomic_json(directory / 'validation.json', info)
         thumbnail = directory / 'thumbnail.jpg'
         if not thumbnail.exists() or state.get('cover_version') != 'mascot-approved-cels-20261015-r1':
-            from moduli.mascot import mascot_cover
+            from mavis.mascot import mascot_cover
             mascot_cover(content.get('thumbnail_phrase') or content['title'], str(thumbnail))
             state['cover_version'] = 'mascot-approved-cels-20261015-r1'
             atomic_json(state_path, state)
         if self_test:
             atomic_json(ROOT / 'shorts-validated.json', {'job': job, 'validated_at': datetime.now(timezone.utc).isoformat()})
         if upload:
-            from moduli.pubblica import prepare_video_transfer, transfer_video, upload_thumbnail
+            from mavis.youtube_upload import prepare_video_transfer, transfer_video, upload_thumbnail
 
             client, channel_id = retry(lambda: youtube_session(cfg))
             state['channel_id'] = channel_id
@@ -205,7 +205,7 @@ def main():
     rec.add_argument('--retry-upload', action='store_true')
     args = parser.parse_args()
     boot()
-    from moduli.shorts import atomic_json
+    from mavis.shorts import atomic_json
     cfg = config()
     with open(ROOT / 'paul-revere.lock', 'a') as lock:
         try:

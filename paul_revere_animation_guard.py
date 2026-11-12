@@ -2,7 +2,7 @@
 
 def verify_approved_animation():
     import hashlib, json
-    from moduli.runtime_profile import animation_directory
+    from mavis.runtime_profile import animation_directory
     root = animation_directory()
     required = ['poses.png', 'walk-cycle.png', 'walk-cycle.json', 'puff-cycle.png']
     for name in required:

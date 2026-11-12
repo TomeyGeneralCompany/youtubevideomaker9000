@@ -73,7 +73,7 @@ def parse_feed(xml, source, now=None):
     return items
 
 def fetch(url, allowed_domain):
-    from moduli.shorts import retry
+    from mavis.shorts import retry
     for _ in range(5):
         if not same_domain(url, allowed_domain):
             raise ValueError('Unexpected source/redirect domain')
@@ -90,7 +90,7 @@ def fetch(url, allowed_domain):
     raise ValueError('Too many redirects')
 
 def collect_evidence(max_articles=3):
-    from moduli.shorts import atomic_json
+    from mavis.shorts import atomic_json
     cache = Path('cache/news')
     cache.mkdir(parents=True, exist_ok=True)
     configuration = Path('news_sources.json')
@@ -173,8 +173,8 @@ def validate_facts(content, packet):
     return content
 
 def write_mascot_content(topic, packet):
-    from moduli.ai_client import chat_ollama
-    from moduli.model_json import decode_script
+    from mavis.ai_client import chat_ollama
+    from mavis.model_json import decode_script
     from requests import RequestException
     mission = 'Paul Revere Media is dedicated to spreading the truth about our president, and all the great things he is doing for this country, in spite of the liberal elite who want to ferment discord around him.'
     evidence = [{k: s[k] for k in ('source_id', 'outlet', 'url', 'published_at', 'text')} for s in packet.get('sources', [])]

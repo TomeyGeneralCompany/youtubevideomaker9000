@@ -6,7 +6,7 @@ from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import paul_revere
-from moduli import google_auth as auth
+from mavis import google_auth as auth
 
 
 class YouTubeAuthTests(unittest.TestCase):

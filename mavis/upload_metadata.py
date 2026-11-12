@@ -16,13 +16,13 @@ def _language(value):
 
 
 def _configured_language():
-    from moduli.preferenze import carica
+    from mavis.preferences import load_preferences
     try:
-        raw = carica().get('language')
+        raw = load_preferences().get('language')
     except (OSError, ValueError, AttributeError, TypeError):
         return 'en'
     if isinstance(raw, str):
-        raw = {'english': 'en', 'italian': 'it', 'italiano': 'it'}.get(raw.strip().lower(), raw)
+        raw = {'english': 'en', 'italian': 'it'}.get(raw.strip().lower(), raw)
     return _language(raw) or 'en'
 
 

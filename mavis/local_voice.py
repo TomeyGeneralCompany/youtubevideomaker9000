@@ -10,7 +10,7 @@ BASE = 'qwen-talker-0.6b-base-Q4_K_M.gguf'
 CODEC = 'qwen-tokenizer-12hz-Q8_0.gguf'
 
 def profile():
-    from moduli.runtime_profile import voice_profile
+    from mavis.runtime_profile import voice_profile
     p = voice_profile()
     if not str(p.get('reference_text', '')).strip():
         raise ValueError('Voice profile requires reference_text.')
@@ -117,7 +117,7 @@ def synthesize(text, output):
         run([str(ENGINE / 'source/build/qwen-tts'), '--model', str(MODELS / BASE), '--codec', str(MODELS / CODEC), '--lang', 'English', '--ref-wav', str(ref), '--ref-text', str(transcript), '--seed', str(p.get('seed', 42)), '--max-new', str(max(600, len(text.split()) * 14)), '-o', str(tmp)], text)
         validate_wav(tmp)
         tmp.replace(wav)
-    from moduli.ffmpeg_utils import ffmpeg_path
+    from mavis.ffmpeg_utils import ffmpeg_path
     dest = Path(output)
     dest.parent.mkdir(parents=True, exist_ok=True)
     subprocess.run([ffmpeg_path(), '-y', '-v', 'error', '-threads', '2', '-filter_threads', '1', '-i', str(wav), '-af', 'loudnorm=I=-14:TP=-1.5:LRA=11', '-ar', '48000', '-ac', '2', '-c:a', 'libmp3lame', '-b:a', '192k', str(dest)], check=True, capture_output=True, timeout=180)

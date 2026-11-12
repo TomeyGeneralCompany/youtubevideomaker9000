@@ -2,7 +2,7 @@
 from datetime import timezone
 
 from googleapiclient.http import MediaFileUpload
-from moduli.upload_metadata import prepare_upload_snippet
+from mavis.upload_metadata import prepare_upload_snippet
 
 
 def prepare_video_transfer(client, video_path, metadata, *, publish_at=None, immediate=False):

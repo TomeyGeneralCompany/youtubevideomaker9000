@@ -1,4 +1,4 @@
-from moduli.runtime_profile import animation_directory, brand_name, media_profile, workspace
+from mavis.runtime_profile import animation_directory, brand_name, media_profile, workspace
 'Paul Revere Media: fixed-format Shorts and offline recovery primitives.'
 import hashlib
 import json
@@ -36,7 +36,7 @@ def retry(fn, attempts=3, delay=2):
             time.sleep(min(30, delay * 2 ** attempt))
 
 def probe(path):
-    from moduli.ffmpeg_utils import ffprobe_path
+    from mavis.ffmpeg_utils import ffprobe_path
     result = subprocess.run([ffprobe_path(), '-v', 'error', '-show_streams', '-show_format', '-of', 'json', str(path)], check=True, capture_output=True, text=True, timeout=30)
     return json.loads(result.stdout)
 
@@ -62,7 +62,7 @@ def validate_short(path):
 
 def fit_narration(source, dest, target=90):
     """Fit all supplied words to 90 seconds without cutting or rewriting them."""
-    from moduli.ffmpeg_utils import ffmpeg_path
+    from mavis.ffmpeg_utils import ffmpeg_path
     info = probe(source)
     duration = float(info['format']['duration'])
     tempo = duration / target
@@ -132,7 +132,7 @@ def _layer_signature(narration, title):
 
 
 def render_short(audio_path, output_path, mood=None, on_progress=None, custom_music=None, captions_text=None):
-    from moduli.ffmpeg_utils import ffmpeg_path
+    from mavis.ffmpeg_utils import ffmpeg_path
     destination = Path(output_path).absolute()
     destination.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='.short-', dir=destination.parent) as root:
@@ -142,7 +142,7 @@ def render_short(audio_path, output_path, mood=None, on_progress=None, custom_mu
         ass = root / 'captions.ass'
         if captions_text:
             write_ass(captions_text, ass, cigar_beat=True, closing_words=int(os.environ.get('PAUL_REVERE_CLOSING_WORDS', '35')), duration=DURATION)
-        from moduli.mascot import render_mascot
+        from mavis.mascot import render_mascot
         title = os.environ.get('PAUL_REVERE_CURRENT_TITLE', '')
         layer = destination.parent / 'mascot-layer.mkv'
         metadata = destination.parent / 'mascot-layer.json'

@@ -15,8 +15,8 @@ from urllib.parse import urlsplit
 from urllib.request import ProxyHandler, build_opener
 import webbrowser
 
-from moduli.shorts import atomic_json
-from moduli.upload_metadata import prepare_upload_snippet
+from mavis.shorts import atomic_json
+from mavis.upload_metadata import prepare_upload_snippet
 
 SOURCE = Path(__file__).resolve().parent
 JOB = re.compile(r'studio-[a-f0-9]{16}')
@@ -113,8 +113,8 @@ class Studio:
                           'Narration' if state.get('content') else 'Script'), 'log': output}
 
     def setup(self):
-        from moduli.ffmpeg_utils import ffmpeg_path, ffprobe_path
-        from moduli.local_voice import BASE, CODEC, DESIGN, ENGINE, MODELS, profile
+        from mavis.ffmpeg_utils import ffmpeg_path, ffprobe_path
+        from mavis.local_voice import BASE, CODEC, DESIGN, ENGINE, MODELS, profile
         from paul_revere_animation_guard import verify_approved_animation
 
         def check(fn, ok):

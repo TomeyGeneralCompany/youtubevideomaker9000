@@ -11,10 +11,10 @@ from urllib.request import Request, urlopen
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from local_studio import Studio, serve
-from moduli.model_json import decode_script
-from moduli.shorts import atomic_json
-from moduli import pubblica
-from moduli.upload_metadata import prepare_upload_snippet
+from mavis.model_json import decode_script
+from mavis.shorts import atomic_json
+from mavis import youtube_upload
+from mavis.upload_metadata import prepare_upload_snippet
 
 
 class StudioTests(unittest.TestCase):
@@ -61,8 +61,8 @@ class StudioTests(unittest.TestCase):
                         self.assertEqual(state['metadata']['defaultLanguage'], 'en-US')
                         youtube = Mock()
                         youtube.videos.return_value.insert.return_value.next_chunk.return_value = (None, {'id': 'video-id'})
-                        with patch.object(pubblica, 'MediaFileUpload'):
-                            pubblica.prepare_video_transfer(youtube, 'video.mp4', content, immediate=True)
+                        with patch.object(youtube_upload, 'MediaFileUpload'):
+                            youtube_upload.prepare_video_transfer(youtube, 'video.mp4', content, immediate=True)
                         sent = youtube.videos.return_value.insert.call_args.kwargs['body']['snippet']
                         self.assertEqual(state['metadata'], sent)
                         atomic_json(folder / 'validation.json', {})
@@ -84,7 +84,7 @@ class StudioTests(unittest.TestCase):
     def test_metadata_limits_and_language_fallback(self):
         source = {'title': '<' + 'T' * 101 + '>', 'description': '€' * 2000,
                   'tags': ['two words', 'x' * 488, 'extra'], 'language': 'not a language'}
-        with patch('moduli.preferenze.carica', return_value={'language': 'italiano'}):
+        with patch('mavis.preferences.load_preferences', return_value={'language': 'it'}):
             snippet = prepare_upload_snippet(source)
             self.assertEqual(snippet['defaultLanguage'], 'it')
             self.assertEqual(prepare_upload_snippet({'title': 'No language'})['defaultLanguage'], 'it')

@@ -4,7 +4,7 @@ import math
 from contextvars import ContextVar
 from pathlib import Path
 from functools import lru_cache
-from moduli.runtime_profile import media_profile
+from mavis.runtime_profile import media_profile
 from PIL import Image, ImageDraw
 VERSION = 'mascot-approved-cels-20261015-r1'
 

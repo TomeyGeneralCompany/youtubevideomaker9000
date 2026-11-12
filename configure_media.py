@@ -28,7 +28,7 @@ def main():
                 p.error('Voice reference file does not exist.')
             voice['reference_wav'] = str(ref.resolve())
     else:
-        p.error('Voice provider must be qwen-local; the unused Edge/gTTS path has been removed.')
+        p.error('Set the voice provider to qwen-local.')
     if a.background and (not a.background.is_file()):
         p.error('Background file does not exist.')
     root.mkdir(parents=True, exist_ok=True)
