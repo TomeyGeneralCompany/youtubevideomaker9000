@@ -1,4 +1,4 @@
-"""One-shot, private test, and unattended jobs for the installed TubeAssistant."""
+"""Run MAVIS production jobs, private tests, and scheduled publishing."""
 import argparse
 from datetime import datetime, timedelta, timezone
 import fcntl

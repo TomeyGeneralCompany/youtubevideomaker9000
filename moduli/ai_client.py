@@ -58,8 +58,5 @@ def _ollama_local(messages: list, max_tokens: int = 8192) -> str:
 
 
 def chat_ollama(prompt: str, system: str | None = None, max_tokens: int = 8192) -> str:
-    messages = []
-    if system:
-        messages.append({"role": "system", "content": system})
-    messages.append({"role": "user", "content": prompt})
-    return _ollama_local(messages, max_tokens)
+    turns = [('system', system), ('user', prompt)] if system else [('user', prompt)]
+    return _ollama_local([dict(role=role, content=value) for role, value in turns], max_tokens)
