@@ -13,11 +13,10 @@ def boot():
     os.chdir(ROOT)
     from dotenv import load_dotenv
     load_dotenv(ROOT / '.env')
-    os.environ.update(VIDEO_WIDTH='1080', VIDEO_HEIGHT='1920', VIDEO_FPS='30', VIDEO_CODEC='libx264', PAUL_REVERE_PUBLISH_MODE='private', PAUL_REVERE_VIDEO_MODE='mascot')
 
 def config():
-    defaults = {'timezone': 'America/Detroit', 'publish_times': ['18:00'], 'lead_minutes': 180, 'mode': 'private', 'expected_channel': 'Paul Revere Media'}
-    file = ROOT / 'paul_revere.json'
+    defaults = {'timezone': 'America/Detroit', 'publish_times': ['18:00'], 'lead_minutes': 180, 'mode': 'private', 'expected_channel': None, 'topic': ''}
+    file = ROOT / 'mavis.json'
     if file.exists():
         defaults.update(json.loads(file.read_text()))
     if defaults['mode'] not in ('private', 'scheduled'):
@@ -58,18 +57,16 @@ def read_editorial(path):
         raise ValueError('closing_script must be the exact ending of script')
     if closing.strip() and (not 28 <= len(closing.split()) <= 42):
         raise ValueError('closing_script must contain 28–42 words')
-    text = ' '.join([data['title'], data.get('topic', ''), data['script']])
-    import re
-    if not re.search('\\b(trump|maga)\\b', text, re.I):
-        raise ValueError('Paul Revere jobs must concern Trump or MAGA')
     data.setdefault('topic', data['title'])
     data.setdefault('description', data['title'] + ' #Shorts')
-    data.setdefault('tags', ['Trump', 'MAGA', 'Paul Revere Media', 'Shorts'])
+    data.setdefault('tags', [])
     data.setdefault('mood', 'epic')
     return data
 
 def youtube_session(cfg, *, authorize=False):
     from mavis.google_auth import connect_youtube
+    if not cfg.get('expected_channel') and not cfg.get('expected_channel_id'):
+        raise ValueError('Set expected_channel or expected_channel_id in mavis.json before connecting YouTube.')
 
     def check_channel(client):
         channels = client.channels().list(part='snippet', mine=True).execute(num_retries=5).get('items', [])
@@ -77,14 +74,15 @@ def youtube_session(cfg, *, authorize=False):
             raise RuntimeError('OAuth did not resolve exactly one channel')
         selected = channels[0]
         expected_id = cfg.get('expected_channel_id')
-        if selected['snippet']['title'] != cfg['expected_channel'] or (expected_id and selected['id'] != expected_id):
-            raise RuntimeError('Connected YouTube channel does not match Paul Revere Media configuration')
+        expected_title = cfg.get('expected_channel')
+        if (expected_title and selected['snippet']['title'] != expected_title) or (expected_id and selected['id'] != expected_id):
+            raise RuntimeError('Connected YouTube channel does not match the configured channel')
         return selected['id']
 
     return connect_youtube(ROOT, check_channel, authorize=authorize)
 
-def produce(job, cfg, editorial=None, upload=False, publish_at=None, self_test=False):
-    from paul_revere_animation_guard import verify_approved_animation
+def produce(job, cfg, editorial=None, upload=False, publish_at=None, self_test=False, topic=None):
+    from mavis.animation_guard import verify_approved_animation
     verify_approved_animation()
     from mavis.shorts import atomic_json, retry, validate_short
     directory = ROOT / 'runs' / job
@@ -110,16 +108,15 @@ def produce(job, cfg, editorial=None, upload=False, publish_at=None, self_test=F
                 content = read_editorial(editorial)
             else:
                 from mavis.media_research import collect_evidence, write_mascot_content
+                topic = (topic or cfg.get('topic') or '').strip()
+                if not topic:
+                    raise ValueError('Enter a topic or provide a script.')
                 packet = {'sources': []} if os.getenv('TUBE_OFFLINE') == '1' else collect_evidence()
                 atomic_json(directory / 'research.json', packet)
-                topic = 'Trump and MAGA accomplishments, patriotic celebration and supporter culture'
                 content = write_mascot_content(topic, packet)
                 content['topic'] = content['title']
             state['content'] = content
             atomic_json(state_path, state)
-        from paul_revere_metadata import enrich
-        state['content'] = enrich(state['content'])
-        atomic_json(state_path, state)
         content = state['content']
         audio = directory / ('narration.mp3' if self_test else 'narration.wav')
         legacy_audio = directory / 'narration.mp3'
@@ -137,8 +134,8 @@ def produce(job, cfg, editorial=None, upload=False, publish_at=None, self_test=F
             state['audio_done'] = True
             state['audio_version'] = 'mascot-ready-v4'
             atomic_json(state_path, state)
-        os.environ['PAUL_REVERE_CURRENT_TITLE'] = content['title']
-        os.environ['PAUL_REVERE_CLOSING_WORDS'] = str(len(content.get('closing_script', '').split()) or 35)
+        os.environ['MAVIS_CURRENT_TITLE'] = content['title']
+        os.environ['MAVIS_CLOSING_WORDS'] = str(len(content.get('closing_script', '').split()) or 35)
         video = directory / 'short.mp4'
         if state.get('renderer_version') != 'mascot-approved-cels-20261015-r1':
             state['render_done'] = False
@@ -192,6 +189,7 @@ def main():
     sub = parser.add_subparsers(dest='command', required=True)
     run = sub.add_parser('run')
     run.add_argument('--script')
+    run.add_argument('--topic')
     run.add_argument('--upload-private', action='store_true')
     run.add_argument('--job-id')
     test = sub.add_parser('self-test')
@@ -207,11 +205,11 @@ def main():
     boot()
     from mavis.shorts import atomic_json
     cfg = config()
-    with open(ROOT / 'paul-revere.lock', 'a') as lock:
+    with open(ROOT / 'mavis.lock', 'a') as lock:
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
-            print('Another Paul Revere job is running')
+            print('Another MAVIS job is running')
             return
         if args.command == 'authorize':
             _, channel_id = youtube_session(cfg, authorize=True)
@@ -228,10 +226,14 @@ def main():
                     private_test = True
             if not private_test:
                 raise RuntimeError('Complete a successful --upload-private test before enabling public scheduling')
-            cfg['mode'] = 'scheduled'
-            atomic_json(ROOT / 'paul_revere.json', cfg)
+            timer = cfg.get('scheduler_timer')
+            if not isinstance(timer, str) or not timer.endswith('.timer') or not timer[0].isalnum() or '/' in timer:
+                raise ValueError('Set scheduler_timer in mavis.json to your installed systemd user timer.')
             import subprocess
-            subprocess.run(['systemctl', '--user', 'enable', '--now', 'paul-revere-shorts.timer'], check=True)
+            subprocess.run(['systemctl', '--user', 'enable', timer], check=True)
+            cfg['mode'] = 'scheduled'
+            atomic_json(ROOT / 'mavis.json', cfg)
+            subprocess.run(['systemctl', '--user', 'start', timer], check=True)
             print('Scheduled publishing enabled for', cfg['publish_times'], cfg['timezone'])
             return
         if args.command == 'reconcile':
@@ -259,7 +261,7 @@ def main():
             job = args.job_id or datetime.now(timezone.utc).strftime('mascot-manual-%Y%m%d-%H%M%S')
             if Path(job).name != job or job in ('.', '..'):
                 raise ValueError('Invalid job ID')
-            produce(job, cfg, args.script, args.upload_private)
+            produce(job, cfg, args.script, args.upload_private, topic=args.topic)
             return
         if cfg['mode'] != 'scheduled':
             print('Scheduling is private/inactive; run enable-scheduling after testing')

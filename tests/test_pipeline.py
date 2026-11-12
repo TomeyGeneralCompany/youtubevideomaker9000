@@ -33,10 +33,10 @@ class PipelineTests(unittest.TestCase):
             if isinstance(n,ast.ImportFrom) and n.module and n.module.startswith('mavis.'):
                 self.assertTrue((ROOT/Path(*n.module.split('.'))).with_suffix('.py').is_file(),str(p)+': '+n.module)
  def test_runner_uses_kept_renderer_and_resumes_completed_job(self):
-    import paul_revere as runner
+    import run_mavis as runner
     runner.ROOT=self.root
     editorial=self.root/'editorial.json';closing=' '.join(['closing']*35)
-    editorial.write_text(json.dumps({'title':'Trump animation test','script':' '.join(['example']*190)+' '+closing,'closing_script':closing}))
+    editorial.write_text(json.dumps({'title':'Garden animation test','script':' '.join(['example']*190)+' '+closing,'closing_script':closing}))
     mascot=importlib.import_module('mavis.mascot')
     def narration(content,path):Path(path).write_bytes(b'narration')
     def render(audio,output,**kwargs):
@@ -46,7 +46,7 @@ class PipelineTests(unittest.TestCase):
         state=json.loads((self.root/'runs/check/checkpoint.json').read_text());self.assertTrue(state['complete']);self.assertTrue(state['render_done'])
         runner.produce('check',{},editorial=str(editorial));self.assertEqual(render_call.call_count,1)
  def test_publisher_records_upload_before_thumbnail_failure(self):
-    import paul_revere as runner
+    import run_mavis as runner
     from mavis import youtube_upload
     runner.ROOT=self.root
     folder=self.root/'runs/upload';folder.mkdir(parents=True)
@@ -96,7 +96,7 @@ class PipelineTests(unittest.TestCase):
     reference.assert_called_once()
     self.assertEqual(len(calls),2);self.assertTrue((self.root/'two.mp3').stat().st_size>1024)
  def test_selected_artwork_verification(self):
-    from paul_revere_animation_guard import verify_approved_animation
+    from mavis.animation_guard import verify_approved_animation
     verify_approved_animation();(self.root/'assets/animation/poses.png').write_bytes(b'tampered')
     with self.assertRaisesRegex(RuntimeError,'failed verification'):verify_approved_animation()
  def test_real_short_composition_without_stock_or_video_providers(self):

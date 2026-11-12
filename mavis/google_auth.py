@@ -33,7 +33,7 @@ def _save_token(path, credentials):
 
 def _saved_credentials(root):
     path = root / 'token.json'
-    instruction = 'Run python3 paul_revere.py authorize to connect YouTube.'
+    instruction = 'Run python3 run_mavis.py authorize to connect YouTube.'
     try:
         credentials = Credentials.from_authorized_user_file(str(path))
     except (OSError, ValueError) as exc:

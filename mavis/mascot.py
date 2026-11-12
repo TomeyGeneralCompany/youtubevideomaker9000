@@ -113,14 +113,10 @@ def mascot_cover(title, output, sheet=SHEET):
     pose = load_poses(sheet)[3]
     im = im.convert('RGBA')
     im.alpha_composite(pose, (110, 475))
-    d = ImageDraw.Draw(im)
-    f = font(43)
-    text = 'GOD BLESS AMERICA'
-    d.text(((1080 - f.getlength(text)) / 2, 1510), text, font=f, fill='#f2c55b')
     im.convert('RGB').save(output, quality=92)
 
 def generate_host_audio(content, output):
-    """Narrate all words, with a 2.5-second silent cigar beat before the closing."""
+    """Narrate all words, with a 2.5-second silent pause before the closing."""
     from mavis.audio import generate_audio
     from mavis.shorts import fit_narration
     from mavis.ffmpeg_utils import ffmpeg_path

@@ -69,16 +69,20 @@ class Studio:
                 settings['TUBE_MUSIC_VOLUME'] = str(volume)
                 script = str(data.get('script', '')).strip()
                 title = str(data.get('title', '')).strip()
-                if script and not title:
-                    raise ValueError('Enter a title for the supplied script.')
+                if not title:
+                    raise ValueError('Enter a title or topic.')
                 job = 'studio-' + secrets.token_hex(8)
                 folder = self.runs / job
                 folder.mkdir(parents=True)
                 if script:
                     atomic_json(folder / 'editorial.json', {'title': title, 'script': script})
+                else:
+                    settings['MAVIS_JOB_TOPIC'] = title
                 atomic_json(folder / 'studio.json', settings)
             env = {**os.environ, **settings, 'TUBE_WORKSPACE': str(self.root), 'PYTHONUNBUFFERED': '1'}
-            cmd = [sys.executable, str(SOURCE / 'paul_revere.py'), 'run', '--job-id', job]
+            cmd = [sys.executable, str(SOURCE / 'run_mavis.py'), 'run', '--job-id', job]
+            if settings.get('MAVIS_JOB_TOPIC'):
+                cmd.extend(['--topic', settings['MAVIS_JOB_TOPIC']])
             if (folder / 'editorial.json').is_file():
                 cmd.extend(['--script', str(folder / 'editorial.json')])
             with (folder / 'studio.log').open('ab') as log:
@@ -115,7 +119,7 @@ class Studio:
     def setup(self):
         from mavis.ffmpeg_utils import ffmpeg_path, ffprobe_path
         from mavis.local_voice import BASE, CODEC, DESIGN, ENGINE, MODELS, profile
-        from paul_revere_animation_guard import verify_approved_animation
+        from mavis.animation_guard import verify_approved_animation
 
         def check(fn, ok):
             try:
@@ -226,7 +230,7 @@ def main():
     parser.add_argument('--port', type=int, default=8765)
     parser.add_argument('--no-browser', action='store_true')
     args = parser.parse_args()
-    from paul_revere import ROOT, boot
+    from run_mavis import ROOT, boot
     boot()
     with serve(Studio(ROOT), args.port) as server:
         url = f'http://127.0.0.1:{server.server_port}'
