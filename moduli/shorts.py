@@ -32,8 +32,6 @@ def retry(fn, attempts=3, delay=2):
         try:
             return fn()
         except Exception as exc:
-            from moduli.quota_control import defer_if_daily_quota
-            defer_if_daily_quota(exc)
             status = getattr(getattr(exc, 'response', None), 'status_code', None)
             if status in (400, 401, 402, 403, 404) or attempt == attempts - 1:
                 raise

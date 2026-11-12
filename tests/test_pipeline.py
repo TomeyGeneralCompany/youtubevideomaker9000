@@ -3,7 +3,7 @@ from pathlib import Path
 from unittest.mock import Mock,patch
 ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT))
 from PIL import Image
-from moduli import shorts,local_voice,audio,ai_client
+from moduli import shorts,local_voice,audio
 
 def asset_pack(root):
     folder=root/'assets/animation';folder.mkdir(parents=True,exist_ok=True)
@@ -22,7 +22,7 @@ def wav_file(path,seconds):
 class PipelineTests(unittest.TestCase):
  def setUp(self):
     self.tmp=tempfile.TemporaryDirectory();self.root=Path(self.tmp.name);self.cwd=Path.cwd();os.chdir(self.root)
-    self.env=patch.dict(os.environ,{'TUBE_WORKSPACE':str(self.root),'PAUL_REVERE_FREE_ONLY':'1','X264_PRESET':'ultrafast','FFMPEG_THREADS':'2'});self.env.start();asset_pack(self.root)
+    self.env=patch.dict(os.environ,{'TUBE_WORKSPACE':str(self.root),'X264_PRESET':'ultrafast','FFMPEG_THREADS':'2'});self.env.start();asset_pack(self.root)
     for name in ['moduli.mascot','moduli.mascot_walk']:sys.modules.pop(name,None)
  def tearDown(self):self.env.stop();os.chdir(self.cwd);self.tmp.cleanup()
  def test_import_closure_and_removed_dependencies(self):
@@ -71,10 +71,6 @@ class PipelineTests(unittest.TestCase):
     with patch.object(local_voice,'run',native):
         local_voice.synthesize('Example words.',self.root/'one.mp3');local_voice.synthesize('Example words.',self.root/'two.mp3')
     self.assertEqual(len(calls),2);self.assertTrue((self.root/'two.mp3').stat().st_size>1024)
- def test_free_fallback_and_retained_text_providers(self):
-    self.assertEqual(set(ai_client._PROVIDERS),{'openrouter','gemini','ollama_cloud','ollama_local'})
-    with patch.dict(os.environ,{'AI_SERVICE':'gemini'}),patch.object(ai_client,'_ollama_local',return_value='local answer'),patch.object(ai_client,'_openrouter') as paid:
-        self.assertEqual(ai_client._fallback([],100),'local answer');paid.assert_not_called()
  def test_selected_artwork_verification(self):
     from paul_revere_animation_guard import verify_approved_animation
     verify_approved_animation();(self.root/'assets/animation/poses.png').write_bytes(b'tampered')

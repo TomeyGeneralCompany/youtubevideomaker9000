@@ -193,8 +193,6 @@ def write_mascot_content(topic, packet):
                 raise ValueError('closing_script must be the exact final 28–42 words of script')
             return validate_facts(data, packet)
         except (ValueError, RuntimeError) as exc:
-            from moduli.quota_control import defer_if_daily_quota
-            defer_if_daily_quota(exc)
             last = exc
             feedback = f'\nPrevious attempt failed validation: {exc}. Correct it.'
     raise RuntimeError(f'No validated mascot script: {last}')

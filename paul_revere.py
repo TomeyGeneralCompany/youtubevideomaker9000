@@ -13,7 +13,7 @@ def boot():
     os.chdir(ROOT)
     from dotenv import load_dotenv
     load_dotenv(ROOT / '.env')
-    os.environ.update(VIDEO_WIDTH='1080', VIDEO_HEIGHT='1920', VIDEO_FPS='30', VIDEO_CODEC='libx264', PAUL_REVERE_FREE_ONLY='1', PAUL_REVERE_PUBLISH_MODE='private', PAUL_REVERE_VIDEO_MODE='mascot')
+    os.environ.update(VIDEO_WIDTH='1080', VIDEO_HEIGHT='1920', VIDEO_FPS='30', VIDEO_CODEC='libx264', PAUL_REVERE_PUBLISH_MODE='private', PAUL_REVERE_VIDEO_MODE='mascot')
 
 def config():
     defaults = {'timezone': 'America/Detroit', 'publish_times': ['18:00'], 'lead_minutes': 180, 'mode': 'private', 'expected_channel': 'Paul Revere Media'}

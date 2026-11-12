@@ -4,5 +4,3 @@ python-dotenv>=1.0.0
 google-api-python-client>=2.100.0
 google-auth-oauthlib>=1.1.0
 google-auth>=2.0.0
-# Needed only when AI_SERVICE=gemini; Ollama/OpenRouter use requests.
-google-generativeai>=0.7.0

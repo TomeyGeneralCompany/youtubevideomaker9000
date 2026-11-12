@@ -1,3 +1,4 @@
+import os
 import sys
 import unittest
 from pathlib import Path
@@ -5,7 +6,6 @@ from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from moduli import ai_client as ai
-from moduli.quota_control import QuotaPaused
 
 
 class LocalWriterTests(unittest.TestCase):
@@ -48,18 +48,14 @@ class LocalWriterTests(unittest.TestCase):
         self.assertEqual(post.call_args_list[0].kwargs['json']['format']['required'], ['script'])
         self.assertEqual(post.call_count, 2)
 
-    def test_quota_uses_local_writer_directly(self):
-        with patch.object(ai, '_primary', side_effect=QuotaPaused('cooldown')), \
-             patch.object(ai, '_ollama_local', return_value='local answer') as local, \
-             patch.object(ai, '_fallback') as fallback:
-            self.assertEqual(ai.chat('test'), 'local answer')
-            local.assert_called_once()
-            fallback.assert_not_called()
-
-    def test_primary_and_ordinary_fallback(self):
-        with patch.object(ai, '_primary', return_value='primary answer'), patch.object(ai, '_ollama_local') as local:
-            self.assertEqual(ai.chat('test'), 'primary answer')
-            local.assert_not_called()
-        with patch.object(ai, '_primary', side_effect=RuntimeError('offline')), \
-             patch.object(ai, '_fallback', return_value='fallback answer'):
-            self.assertEqual(ai.chat('test'), 'fallback answer')
+    def test_public_writer_ignores_old_cloud_provider_setting(self):
+        response = Mock()
+        response.json.return_value = {'message': {'content': 'local answer'}}
+        with patch.dict(os.environ, {'AI_SERVICE': 'openrouter'}), \
+             patch.object(ai.requests, 'post', return_value=response) as post:
+            self.assertEqual(ai.chat_ollama('test', system='system test'), 'local answer')
+        self.assertEqual([call.args[0] for call in post.call_args_list], [
+            'http://localhost:11434/api/chat', 'http://127.0.0.1:11434/api/generate',
+        ])
+        self.assertEqual(post.call_args_list[0].kwargs['json']['messages'][0],
+                         {'role': 'system', 'content': 'system test'})
