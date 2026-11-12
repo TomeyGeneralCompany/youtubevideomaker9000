@@ -68,32 +68,20 @@ def read_editorial(path):
     data.setdefault('mood', 'epic')
     return data
 
-def verify_channel(cfg):
-    from google.oauth2.credentials import Credentials
-    token = ROOT / 'token.json'
-    if not token.exists():
-        raise RuntimeError('Existing token.json is missing; complete the normal TubeAssistant OAuth login first')
-    creds = Credentials.from_authorized_user_file(str(token))
-    if not creds.valid:
-        if not creds.refresh_token:
-            raise RuntimeError('OAuth token cannot refresh; use the existing interactive login')
-        from google.auth.transport.requests import Request
-        try:
-            creds.refresh(Request())
-        except Exception as exc:
-            raise RuntimeError('OAuth refresh failed; use the existing interactive TubeAssistant login') from exc
-        token.write_text(creds.to_json(), encoding='utf-8')
-        token.chmod(384)
-    from moduli.pubblica import _get_youtube
-    response = _get_youtube().channels().list(part='snippet', mine=True).execute(num_retries=5)
-    items = response.get('items', [])
-    if len(items) != 1:
-        raise RuntimeError('OAuth did not resolve exactly one channel')
-    channel = items[0]
-    expected_id = cfg.get('expected_channel_id')
-    if expected_id and channel['id'] != expected_id or channel['snippet']['title'] != cfg['expected_channel']:
-        raise RuntimeError('Connected YouTube channel does not match Paul Revere Media configuration')
-    return channel['id']
+def youtube_session(cfg, *, authorize=False):
+    from moduli.google_auth import connect_youtube
+
+    def check_channel(client):
+        channels = client.channels().list(part='snippet', mine=True).execute(num_retries=5).get('items', [])
+        if len(channels) != 1:
+            raise RuntimeError('OAuth did not resolve exactly one channel')
+        selected = channels[0]
+        expected_id = cfg.get('expected_channel_id')
+        if selected['snippet']['title'] != cfg['expected_channel'] or (expected_id and selected['id'] != expected_id):
+            raise RuntimeError('Connected YouTube channel does not match Paul Revere Media configuration')
+        return selected['id']
+
+    return connect_youtube(ROOT, check_channel, authorize=authorize)
 
 def produce(job, cfg, editorial=None, upload=False, publish_at=None, self_test=False):
     from paul_revere_animation_guard import verify_approved_animation
@@ -172,24 +160,24 @@ def produce(job, cfg, editorial=None, upload=False, publish_at=None, self_test=F
         if self_test:
             atomic_json(ROOT / 'shorts-validated.json', {'job': job, 'validated_at': datetime.now(timezone.utc).isoformat()})
         if upload:
-            channel_id = retry(lambda: verify_channel(cfg))
+            from moduli.pubblica import prepare_video_transfer, transfer_video, upload_thumbnail
+
+            client, channel_id = retry(lambda: youtube_session(cfg))
             state['channel_id'] = channel_id
             if publish_at and publish_at <= datetime.now(timezone.utc):
                 raise RuntimeError('Rendering missed the publication deadline; upload deferred')
+            request = prepare_video_transfer(client, str(video), content, publish_at=publish_at,
+                                             immediate=publish_at is None)
             state['upload_started'] = True
             atomic_json(state_path, state)
-            from moduli.pubblica import pubblica_video
-            os.environ['PAUL_REVERE_PUBLISH_MODE'] = 'scheduled' if publish_at else 'private'
-
-            def record_upload(video_id):
-                state['video_id'] = video_id
-                state['publish_at'] = publish_at.isoformat() if publish_at else None
-                state['complete'] = True
-                atomic_json(state_path, state)
-            video_id = pubblica_video(str(video), str(thumbnail), content, publish_at=publish_at, immediate=publish_at is None, privacy_status='private', on_uploaded=record_upload)
-            state['video_id'] = video_id
-            state['publish_at'] = publish_at.isoformat() if publish_at else None
+            video_id = transfer_video(request)
+            state.update(video_id=video_id, publish_at=publish_at.isoformat() if publish_at else None, complete=True)
             atomic_json(state_path, state)
+            print(f'Upload complete: https://youtu.be/{video_id}')
+            try:
+                upload_thumbnail(client, video_id, str(thumbnail))
+            except Exception as exc:
+                print(f'Video saved; thumbnail upload failed: {exc}')
         state['complete'] = True
         state.pop('error', None)
         atomic_json(state_path, state)
@@ -209,6 +197,7 @@ def main():
     test = sub.add_parser('self-test')
     test.add_argument('--upload-private', action='store_true')
     sub.add_parser('tick')
+    sub.add_parser('authorize', help='Connect the configured YouTube channel in a browser')
     sub.add_parser('enable-scheduling')
     rec = sub.add_parser('reconcile')
     rec.add_argument('job')
@@ -224,10 +213,14 @@ def main():
         except BlockingIOError:
             print('Another Paul Revere job is running')
             return
+        if args.command == 'authorize':
+            _, channel_id = youtube_session(cfg, authorize=True)
+            print('Connected YouTube channel:', channel_id)
+            return
         if args.command == 'enable-scheduling':
             if not (ROOT / 'shorts-validated.json').exists():
                 raise RuntimeError('Run self-test successfully before enabling scheduling')
-            cfg['expected_channel_id'] = verify_channel(cfg)
+            _, cfg['expected_channel_id'] = youtube_session(cfg)
             private_test = False
             for checkpoint in (ROOT / 'runs').glob('*/checkpoint.json'):
                 state = json.loads(checkpoint.read_text())
@@ -249,10 +242,9 @@ def main():
             if bool(args.video_id) == bool(args.retry_upload):
                 raise ValueError('Choose --video-id ID or --retry-upload after checking YouTube Studio')
             if args.video_id:
-                verify_channel(cfg)
-                from moduli.pubblica import _get_youtube
-                item = _get_youtube().videos().list(part='snippet', id=args.video_id).execute().get('items', [])
-                if not item or item[0]['snippet']['channelId'] != verify_channel(cfg):
+                client, channel_id = youtube_session(cfg)
+                item = client.videos().list(part='snippet', id=args.video_id).execute(num_retries=5).get('items', [])
+                if not item or item[0]['snippet']['channelId'] != channel_id:
                     raise ValueError('Video ID does not belong to the configured channel')
                 state['video_id'] = args.video_id
                 state['complete'] = True

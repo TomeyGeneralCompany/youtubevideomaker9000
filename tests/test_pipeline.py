@@ -50,18 +50,44 @@ class PipelineTests(unittest.TestCase):
         state=json.loads((self.root/'runs/check/checkpoint.json').read_text());self.assertTrue(state['complete']);self.assertTrue(state['render_done'])
         runner.produce('check',{},editorial=str(editorial));self.assertEqual(render_call.call_count,1)
  def test_publisher_records_upload_before_thumbnail_failure(self):
+    import paul_revere as runner
     from moduli import pubblica
-    yt=Mock();request=yt.videos.return_value.insert.return_value;request.next_chunk.return_value=(None,{'id':'video-123'})
-    yt.thumbnails.return_value.set.return_value.execute.side_effect=RuntimeError('thumbnail unavailable')
-    recorded=[]
-    with patch.object(pubblica,'_get_youtube',return_value=yt),patch.object(pubblica,'MediaFileUpload'):
-        result=pubblica.pubblica_video('video.mp4','cover.jpg',{'title':'Test'},immediate=True,on_uploaded=recorded.append)
-    self.assertEqual(result,'video-123');self.assertEqual(recorded,['video-123'])
-    status=yt.videos.return_value.insert.call_args.kwargs['body']['status'];self.assertEqual(status['privacyStatus'],'private');self.assertNotIn('publishAt',status)
+    runner.ROOT=self.root
+    folder=self.root/'runs/upload';folder.mkdir(parents=True)
+    for name in ['narration.wav','short.mp4','thumbnail.jpg']:(folder/name).touch()
+    state=folder/'checkpoint.json'
+    state.write_text(json.dumps({'content':{'title':'Test','script':'Test'},'audio_done':True,
+                                 'audio_version':'mascot-ready-v4','render_done':True,
+                                 'renderer_version':'mascot-approved-cels-20261015-r1',
+                                 'cover_version':'mascot-approved-cels-20261015-r1'}))
+    yt=Mock();request=yt.videos.return_value.insert.return_value
+    request.next_chunk.return_value=(None,{'id':'video-123'})
+    def thumbnail_failure():
+        self.assertEqual(json.loads(state.read_text())['video_id'],'video-123')
+        raise RuntimeError('thumbnail unavailable')
+    thumb=yt.thumbnails.return_value.set.return_value.execute
+    thumb.side_effect=thumbnail_failure
+    with patch.object(runner,'youtube_session',return_value=(yt,'channel-123')) as session, \
+         patch.object(pubblica,'MediaFileUpload'),patch.object(shorts,'validate_short',return_value={}):
+        runner.produce('upload',{},upload=True)
+        runner.produce('upload',{},upload=True)
+    session.assert_called_once()
+    request.next_chunk.assert_called_once_with(num_retries=5)
+    thumb.assert_called_once()
+    status=yt.videos.return_value.insert.call_args.kwargs['body']['status']
+    self.assertEqual(status['privacyStatus'],'private');self.assertNotIn('publishAt',status)
  def test_schedule_must_come_from_runner(self):
+    from datetime import datetime, timedelta, timezone
     from moduli import pubblica
-    with patch.object(pubblica,'_get_youtube'),self.assertRaisesRegex(ValueError,'explicit publish_at'):
-        pubblica.pubblica_video('video.mp4','cover.jpg',{'title':'Test'})
+    yt=Mock()
+    with self.assertRaisesRegex(ValueError,'explicit publish_at'):
+        pubblica.prepare_video_transfer(yt,'video.mp4',{'title':'Test'})
+    yt.videos.assert_not_called()
+    with patch.object(pubblica,'MediaFileUpload'):
+        pubblica.prepare_video_transfer(yt,'video.mp4',{'title':'Test'},
+            publish_at=datetime(2030,1,1,18,tzinfo=timezone(timedelta(hours=-5))))
+    self.assertEqual(yt.videos.return_value.insert.call_args.kwargs['body']['status']['publishAt'],
+                     '2030-01-01T23:00:00Z')
  def test_local_voice_adapter_and_cached_native_flow(self):
     with patch('moduli.local_voice.synthesize') as synth:audio.genera_audio('Selected words','out.mp3');synth.assert_called_once_with('Selected words','out.mp3')
     local_voice.ROOT=self.root

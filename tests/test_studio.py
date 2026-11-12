@@ -61,8 +61,8 @@ class StudioTests(unittest.TestCase):
                         self.assertEqual(state['metadata']['defaultLanguage'], 'en-US')
                         youtube = Mock()
                         youtube.videos.return_value.insert.return_value.next_chunk.return_value = (None, {'id': 'video-id'})
-                        with patch.object(pubblica, '_get_youtube', return_value=youtube), patch.object(pubblica, 'MediaFileUpload'):
-                            pubblica.pubblica_video('video.mp4', 'cover.jpg', content, immediate=True)
+                        with patch.object(pubblica, 'MediaFileUpload'):
+                            pubblica.prepare_video_transfer(youtube, 'video.mp4', content, immediate=True)
                         sent = youtube.videos.return_value.insert.call_args.kwargs['body']['snippet']
                         self.assertEqual(state['metadata'], sent)
                         atomic_json(folder / 'validation.json', {})
