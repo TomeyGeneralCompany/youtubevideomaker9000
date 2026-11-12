@@ -27,6 +27,7 @@ h1,h2{margin-top:0} label{display:block;margin:12px 0} input:not([type=checkbox]
 <section><h2 id="stage">Production status</h2><p id="message" role="status"></p>
 <button id="resume" hidden>Resume this job</button>
 <details id="script-panel" hidden><summary>Script used</summary><pre id="script"></pre></details>
+<details id="metadata-panel" hidden><summary>YouTube metadata preview</summary><pre id="metadata"></pre></details>
 <pre id="log"></pre><video id="preview" controls hidden></video>
 <p><a id="download" hidden download="short.mp4">Download video</a></p></section>
 <script>
@@ -42,6 +43,13 @@ async function status() {
   $('log').textContent=s.log;
   $('script-panel').hidden=!s.script;
   $('script').textContent=s.script||'';
+  $('metadata-panel').hidden=!s.metadata&&!s.metadata_error;
+  const m=s.metadata;
+  $('metadata').textContent=m ? [
+    'Title: '+m.title, 'Language: '+m.defaultLanguage, 'Category: '+m.categoryId,
+    'Thumbnail text: '+(s.thumbnail_text||''), 'Tags: '+m.tags.join(', '),
+    'Description:', m.description
+  ].join('\n') : (s.metadata_error||'');
   $('start').disabled=s.running;
   $('resume').hidden=s.running||s.ready;
   if(s.ready){

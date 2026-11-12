@@ -22,6 +22,7 @@ class LocalWriterTests(unittest.TestCase):
         self.assertEqual(payload['options']['num_ctx'], 8192)
         self.assertIn('closing_script', payload['format']['required'])
         self.assertIn('facts', payload['format']['required'])
+        self.assertIn('language', payload['format']['required'])
         self.assertIn('/no_think', payload['messages'][-1]['content'])
         self.assertNotIn('/no_think', messages[-1]['content'])
         self.assertEqual(post.call_args_list[1].kwargs['json'], {'model': 'qwen3:4b', 'keep_alive': 0})

@@ -18,7 +18,7 @@ def _ollama_local(messages: list, max_tokens: int = 8192) -> str:
         prompt = copied[-1]['content']
         if 'closing_script' in prompt:
             strings = ['title', 'description', 'script', 'mood',
-                       'thumbnail_phrase', 'closing_script']
+                       'thumbnail_phrase', 'closing_script', 'language']
             props = {key: {'type': 'string'} for key in strings}
             for key in ['tags', 'video_keywords']:
                 props[key] = {'type': 'array', 'items': {'type': 'string'}}

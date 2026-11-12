@@ -13,6 +13,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from local_studio import Studio, serve
 from moduli.model_json import decode_script
 from moduli.shorts import atomic_json
+from moduli import pubblica
+from moduli.upload_metadata import prepare_upload_snippet
 
 
 class StudioTests(unittest.TestCase):
@@ -45,13 +47,24 @@ class StudioTests(unittest.TestCase):
                         with self.assertRaises(HTTPError):
                             post({})
                         folder = studio.folder(job)
-                        atomic_json(folder / 'checkpoint.json', {'audio_done': True, 'content': {'script': 'Test script'}})
+                        content = {'script': 'Test script', 'title': 'Model title', 'description': 'Model description',
+                                   'tags': ['first tag', 'second'], 'language': 'en-us', 'thumbnail_phrase': 'Model cover'}
+                        atomic_json(folder / 'checkpoint.json', {'audio_done': True, 'content': content})
                         process.poll.return_value = 1
                         self.assertEqual(post({'resume': job}), job)
                         self.assertEqual(launch.call_count, 2)
                         self.assertIn(str(folder / 'editorial.json'), launch.call_args.args[0])
                         with urlopen(base + '/status/' + job, timeout=5) as response:
-                            self.assertEqual(json.load(response)['stage'], 'Render')
+                            state = json.load(response)
+                        self.assertEqual(state['stage'], 'Render')
+                        self.assertEqual(state['thumbnail_text'], 'Model cover')
+                        self.assertEqual(state['metadata']['defaultLanguage'], 'en-US')
+                        youtube = Mock()
+                        youtube.videos.return_value.insert.return_value.next_chunk.return_value = (None, {'id': 'video-id'})
+                        with patch.object(pubblica, '_get_youtube', return_value=youtube), patch.object(pubblica, 'MediaFileUpload'):
+                            pubblica.pubblica_video('video.mp4', 'cover.jpg', content, immediate=True)
+                        sent = youtube.videos.return_value.insert.call_args.kwargs['body']['snippet']
+                        self.assertEqual(state['metadata'], sent)
                         atomic_json(folder / 'validation.json', {})
                         (folder / 'short.mp4').write_bytes(b'preview')
                         with urlopen(base + '/video/' + job, timeout=5) as response:
@@ -67,3 +80,16 @@ class StudioTests(unittest.TestCase):
         for reply in ('extra ' + json.dumps(valid), '{"title":', '[]', json.dumps({**valid, 'tags': [7]})):
             with self.subTest(reply=reply), self.assertRaises(ValueError):
                 decode_script(reply)
+
+    def test_metadata_limits_and_language_fallback(self):
+        source = {'title': '<' + 'T' * 101 + '>', 'description': '€' * 2000,
+                  'tags': ['two words', 'x' * 488, 'extra'], 'language': 'not a language'}
+        with patch('moduli.preferenze.carica', return_value={'language': 'italiano'}):
+            snippet = prepare_upload_snippet(source)
+            self.assertEqual(snippet['defaultLanguage'], 'it')
+            self.assertEqual(prepare_upload_snippet({'title': 'No language'})['defaultLanguage'], 'it')
+        self.assertEqual(snippet['title'], 'T' * 100)
+        self.assertEqual(len(snippet['description'].encode('utf-8')), 4998)
+        self.assertEqual(snippet['tags'], ['two words', 'x' * 488])
+        with self.assertRaises(ValueError):
+            prepare_upload_snippet({'title': '<>'})

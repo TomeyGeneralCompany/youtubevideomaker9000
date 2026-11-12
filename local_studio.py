@@ -16,6 +16,7 @@ from urllib.request import ProxyHandler, build_opener
 import webbrowser
 
 from moduli.shorts import atomic_json
+from moduli.upload_metadata import prepare_upload_snippet
 
 SOURCE = Path(__file__).resolve().parent
 JOB = re.compile(r'studio-[a-f0-9]{16}')
@@ -98,7 +99,16 @@ class Studio:
             with log.open('rb') as stream:
                 stream.seek(max(0, log.stat().st_size - 5000))
                 output = stream.read().decode(errors='replace')
-        return {'job': job, 'running': running, 'ready': ready, 'script': state.get('content', {}).get('script'),
+        content = state.get('content') or {}
+        metadata, metadata_error = None, None
+        if content:
+            try:
+                metadata = prepare_upload_snippet(content)
+            except ValueError as exc:
+                metadata_error = str(exc)
+        return {'job': job, 'running': running, 'ready': ready, 'script': content.get('script'),
+                'metadata': metadata, 'metadata_error': metadata_error,
+                'thumbnail_text': content.get('thumbnail_phrase') or content.get('title'),
                 'stage': ('Preview' if ready else 'Render' if state.get('audio_done') else
                           'Narration' if state.get('content') else 'Script'), 'log': output}
 
