@@ -125,7 +125,7 @@ def produce(job, cfg, editorial=None, upload=False, publish_at=None, self_test=F
                 packet = {'sources': []} if os.getenv('TUBE_OFFLINE') == '1' else collect_evidence()
                 atomic_json(directory / 'research.json', packet)
                 topic = 'Trump and MAGA accomplishments, patriotic celebration and supporter culture'
-                content = retry(lambda: write_mascot_content(topic, packet))
+                content = write_mascot_content(topic, packet)
                 content['topic'] = content['title']
             state['content'] = content
             atomic_json(state_path, state)
@@ -133,7 +133,10 @@ def produce(job, cfg, editorial=None, upload=False, publish_at=None, self_test=F
         state['content'] = enrich(state['content'])
         atomic_json(state_path, state)
         content = state['content']
-        audio = directory / 'narration.mp3'
+        audio = directory / ('narration.mp3' if self_test else 'narration.wav')
+        legacy_audio = directory / 'narration.mp3'
+        if not audio.exists() and state.get('audio_done') and legacy_audio.exists():
+            audio = legacy_audio
         if state.get('audio_version') != 'mascot-ready-v4':
             state['audio_done'] = False
         if not state.get('audio_done') or not audio.exists():
@@ -146,7 +149,6 @@ def produce(job, cfg, editorial=None, upload=False, publish_at=None, self_test=F
             state['audio_done'] = True
             state['audio_version'] = 'mascot-ready-v4'
             atomic_json(state_path, state)
-        atomic_json(state_path, state)
         os.environ['PAUL_REVERE_CURRENT_TITLE'] = content['title']
         os.environ['PAUL_REVERE_CLOSING_WORDS'] = str(len(content.get('closing_script', '').split()) or 35)
         video = directory / 'short.mp4'
@@ -154,11 +156,12 @@ def produce(job, cfg, editorial=None, upload=False, publish_at=None, self_test=F
             state['render_done'] = False
         if not state.get('render_done') or not video.exists():
             from moduli.shorts import render_short
-            render_short(str(audio), str(video), custom_music=os.getenv('TUBE_MUSIC_FILE'), captions_text=content['script'] if os.getenv('TUBE_CAPTIONS', '1') == '1' else None)
+            info = render_short(str(audio), str(video), custom_music=os.getenv('TUBE_MUSIC_FILE'), captions_text=content['script'] if os.getenv('TUBE_CAPTIONS', '1') == '1' else None)
             state['render_done'] = True
             state['renderer_version'] = 'mascot-approved-cels-20261015-r1'
             atomic_json(state_path, state)
-        info = validate_short(video)
+        else:
+            info = validate_short(video)
         atomic_json(directory / 'validation.json', info)
         thumbnail = directory / 'thumbnail.jpg'
         if not thumbnail.exists() or state.get('cover_version') != 'mascot-approved-cels-20261015-r1':

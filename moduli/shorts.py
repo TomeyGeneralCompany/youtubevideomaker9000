@@ -1,4 +1,4 @@
-from moduli.runtime_profile import animation_directory, brand_name
+from moduli.runtime_profile import animation_directory, brand_name, media_profile, workspace
 'Paul Revere Media: fixed-format Shorts and offline recovery primitives.'
 import hashlib
 import json
@@ -7,6 +7,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import time
+import wave
 DURATION = 90.0
 WIDTH, HEIGHT, FPS = (1080, 1920, 30)
 
@@ -98,21 +99,54 @@ def write_ass(script, path, cigar_beat=False, closing_words=35, duration=DURATIO
             lines.append(f'Dialogue: 0,{_ass_time(start)},{_ass_time(end)},Main,,0,0,0,,{text}\n')
     Path(path).write_text(''.join(lines), encoding='utf-8')
 
+def _prepared_pcm(path):
+    try:
+        with wave.open(str(path), 'rb') as wav:
+            return (wav.getnchannels(), wav.getsampwidth(), wav.getframerate(), wav.getnframes()) == (
+                2, 2, 48000, int(DURATION * 48000))
+    except (EOFError, wave.Error):
+        return False
+
+
+def _layer_signature(narration, title):
+    profile = media_profile()
+    settings = profile.get('animation', {})
+    assets = animation_directory()
+    files = [Path(narration), *(assets / name for name in (
+        'poses.png', 'walk-cycle.png', 'walk-cycle.json', 'puff-cycle.png', 'action-cycle.json')),
+        workspace() / 'assets/font_bold.ttf']
+    if settings.get('background'):
+        files.append(workspace() / Path(settings['background']).expanduser())
+    stamp = {
+        'version': 2, 'title': title, 'profile': profile,
+        'preset': os.getenv('X264_PRESET', 'veryfast'), 'threads': os.getenv('FFMPEG_THREADS', '2'),
+        'inputs': [],
+    }
+    for index, path in enumerate(files):
+        digest = None
+        if path.is_file():
+            with path.open('rb') as stream:
+                digest = hashlib.file_digest(stream, 'sha256').hexdigest()
+        stamp['inputs'].append((str(path) if index else 'narration', digest))
+    return hashlib.sha256(json.dumps(stamp, sort_keys=True).encode()).hexdigest()
+
+
 def render_short(audio_path, output_path, mood=None, on_progress=None, custom_music=None, captions_text=None):
     from moduli.ffmpeg_utils import ffmpeg_path
     destination = Path(output_path).absolute()
     destination.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix='paul-revere-short_') as root:
+    with tempfile.TemporaryDirectory(prefix='.short-', dir=destination.parent) as root:
         root = Path(root)
-        narration = fit_narration(audio_path, root / 'narration.wav')
+        audio = Path(audio_path).resolve()
+        narration = str(audio) if _prepared_pcm(audio) else fit_narration(audio, root / 'narration.wav')
         ass = root / 'captions.ass'
         if captions_text:
-            write_ass(captions_text, ass, cigar_beat=True, closing_words=int(os.environ.get('PAUL_REVERE_CLOSING_WORDS', '35')), duration=float(probe(narration)['format']['duration']))
+            write_ass(captions_text, ass, cigar_beat=True, closing_words=int(os.environ.get('PAUL_REVERE_CLOSING_WORDS', '35')), duration=DURATION)
         from moduli.mascot import render_mascot
         title = os.environ.get('PAUL_REVERE_CURRENT_TITLE', '')
         layer = destination.parent / 'mascot-layer.mkv'
         metadata = destination.parent / 'mascot-layer.json'
-        signature = hashlib.sha256(Path(narration).read_bytes() + (animation_directory() / 'poses.png').read_bytes() + title.encode() + b'mascot-approved-cels-20261015-r1').hexdigest()
+        signature = _layer_signature(narration, title)
         reusable = False
         if layer.exists() and metadata.exists():
             try:
@@ -122,10 +156,9 @@ def render_short(audio_path, output_path, mood=None, on_progress=None, custom_mu
                 pass
         if not reusable:
             render_mascot(narration, root / 'mascot.mkv', title=title, on_progress=on_progress)
-            import shutil
-            shutil.copyfile(root / 'mascot.mkv', layer)
-            if abs(float(probe(layer)['format']['duration']) - 90) > 1 / FPS:
+            if abs(float(probe(root / 'mascot.mkv')['format']['duration']) - DURATION) > 1 / FPS:
                 raise ValueError('Incomplete mascot animation layer')
+            os.replace(root / 'mascot.mkv', layer)
             atomic_json(metadata, {'signature': signature})
         music = Path(custom_music).expanduser().resolve() if custom_music else None
         if music and not music.is_file():
@@ -155,16 +188,10 @@ def render_short(audio_path, output_path, mood=None, on_progress=None, custom_mu
                    '-ar', '48000', '-ac', '2', '-movflags', '+faststart', str(tmp)]
         try:
             subprocess.run(command, cwd=root, check=True, capture_output=True, timeout=1800)
-            validate_short(tmp)
-            import shutil
-            partial = destination.with_name(destination.stem + '.partial.mp4')
-            shutil.copyfile(tmp, partial)
-            validate_short(partial)
-            os.replace(partial, destination)
+            info = validate_short(tmp)
+            os.replace(tmp, destination)
         except subprocess.CalledProcessError as exc:
             raise RuntimeError(exc.stderr.decode(errors='replace')[-2000:]) from exc
-        finally:
-            if tmp.exists():
-                tmp.unlink()
     if on_progress:
         on_progress(100, '90-second Short validated')
+    return info

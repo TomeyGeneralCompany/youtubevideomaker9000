@@ -43,7 +43,8 @@ class PipelineTests(unittest.TestCase):
     editorial.write_text(json.dumps({'title':'Trump animation test','script':' '.join(['example']*190)+' '+closing,'closing_script':closing}))
     mascot=importlib.import_module('moduli.mascot')
     def narration(content,path):Path(path).write_bytes(b'narration')
-    def render(audio,output,**kwargs):Path(output).write_bytes(b'video')
+    def render(audio,output,**kwargs):
+        Path(output).write_bytes(b'video');return {'valid':True}
     with patch.object(mascot,'generate_host_audio',side_effect=narration),patch.object(shorts,'render_short',side_effect=render) as render_call,patch.object(shorts,'validate_short',return_value={'valid':True}):
         runner.produce('check',{},editorial=str(editorial))
         state=json.loads((self.root/'runs/check/checkpoint.json').read_text());self.assertTrue(state['complete']);self.assertTrue(state['render_done'])
@@ -68,8 +69,9 @@ class PipelineTests(unittest.TestCase):
     calls=[]
     def native(command,text):
         calls.append((command,text));p=Path(command[command.index('-o')+1]);p.parent.mkdir(parents=True,exist_ok=True);wav_file(p,1)
-    with patch.object(local_voice,'run',native):
+    with patch.object(local_voice,'run',native),patch.object(local_voice,'design',wraps=local_voice.design) as reference:
         local_voice.synthesize('Example words.',self.root/'one.mp3');local_voice.synthesize('Example words.',self.root/'two.mp3')
+    reference.assert_called_once()
     self.assertEqual(len(calls),2);self.assertTrue((self.root/'two.mp3').stat().st_size>1024)
  def test_selected_artwork_verification(self):
     from paul_revere_animation_guard import verify_approved_animation
@@ -77,16 +79,32 @@ class PipelineTests(unittest.TestCase):
     with self.assertRaisesRegex(RuntimeError,'failed verification'):verify_approved_animation()
  def test_real_short_composition_without_stock_or_video_providers(self):
     from moduli.ffmpeg_utils import ffmpeg_path
-    mascot=importlib.import_module('moduli.mascot');source=self.root/'narration.wav';wav_file(source,90)
+    mascot=importlib.import_module('moduli.mascot');source=self.root/'narration.wav'
+    with wave.open(str(source),'wb') as wav:
+        wav.setparams((2,2,48000,0,'NONE','not compressed'))
+        for _ in range(90):
+            wav.writeframes(b'\xe8\x03\x18\xfc' * 48000)
     def local_layer(audio,output,**kwargs):
         subprocess.run([ffmpeg_path(),'-y','-v','error','-f','lavfi','-i','color=c=white:s=1080x1920:r=30','-t','90','-an','-c:v','libx264','-preset','ultrafast','-threads','2','-pix_fmt','yuv420p',str(output)],check=True)
-    with patch.object(mascot,'render_mascot',side_effect=local_layer):
-        shorts.render_short(source,self.root/'short.mp4',captions_text=' '.join(['example']*225))
+    with patch.object(mascot,'render_mascot',side_effect=local_layer),patch.object(shorts,'fit_narration',side_effect=AssertionError('Narration is already fitted')):
+        info=shorts.render_short(source,self.root/'short.mp4',captions_text=' '.join(['example']*225))
+        self.assertEqual(info['streams'][0]['width'],1080)
     info=shorts.validate_short(self.root/'short.mp4');self.assertTrue(info)
     self.assertTrue((self.root/'short.mp4').is_file())
     music=self.root/'chosen music.wav';wav_file(music,1)
     with patch.object(mascot,'render_mascot',side_effect=AssertionError('Expected cached mascot layer')):
         shorts.render_short(source,self.root/'music-short.mp4',custom_music=music)
     self.assertTrue(shorts.validate_short(self.root/'music-short.mp4'))
+    old=shorts._layer_signature(source,'title')
+    (self.root/'media-profile.json').write_text(json.dumps({'animation':{'ground_y':1300}}))
+    self.assertNotEqual(shorts._layer_signature(source,'title'),old)
+
+ def test_script_writer_stops_after_three_invalid_responses(self):
+    from moduli import ai_client, media_research
+    with patch.object(ai_client,'chat_ollama',return_value='incomplete') as write:
+        with self.assertRaisesRegex(RuntimeError,'No validated mascot script'):
+            media_research.write_mascot_content('Test topic',{'sources':[]})
+    self.assertEqual(write.call_count,3)
+    self.assertIn('Previous attempt failed validation',write.call_args.args[0])
 
 if __name__=='__main__':unittest.main()

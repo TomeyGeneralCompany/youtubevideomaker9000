@@ -51,9 +51,26 @@ def validate_wav(path):
                 raise RuntimeError('Local voice produced silence')
     return seconds
 
-def design():
-    p = profile()
-    key = hashlib.sha256(json.dumps(p, sort_keys=True).encode()).hexdigest()[:16]
+def _engine_file(path):
+    try:
+        stat = path.stat()
+        return [str(path.resolve()), stat.st_size, stat.st_mtime_ns]
+    except FileNotFoundError:
+        return [str(path), None]
+
+
+def _reference_key(p):
+    inputs = [p]
+    if p.get('reference_wav'):
+        path = ROOT / Path(p['reference_wav']).expanduser()
+        with path.open('rb') as stream:
+            inputs.append(hashlib.file_digest(stream, 'sha256').hexdigest())
+    else:
+        inputs.extend(_engine_file(path) for path in (ENGINE / 'source/build/qwen-tts', MODELS / DESIGN, MODELS / CODEC))
+    return hashlib.sha256(json.dumps(inputs, sort_keys=True).encode()).hexdigest()
+
+
+def design(p, key):
     folder = ROOT / 'assets/animation/voices' / key
     folder.mkdir(parents=True, exist_ok=True)
     ref = folder / 'reference.wav'
@@ -82,9 +99,10 @@ def design():
     return (ref, text)
 
 def synthesize(text, output):
-    ref, transcript = design()
     p = profile()
-    signature = hashlib.sha256(ref.read_bytes() + text.encode() + json.dumps(p, sort_keys=True).encode()).hexdigest()
+    key = _reference_key(p)
+    engine = [_engine_file(path) for path in (ENGINE / 'source/build/qwen-tts', MODELS / BASE, MODELS / CODEC)]
+    signature = hashlib.sha256(json.dumps([key, engine, text]).encode()).hexdigest()
     cache = ROOT / 'cache/voice'
     cache.mkdir(parents=True, exist_ok=True)
     wav = cache / (signature + '.wav')
@@ -94,11 +112,11 @@ def synthesize(text, output):
         except (RuntimeError, OSError, wave.Error, EOFError):
             wav.unlink(missing_ok=True)
     if not wav.exists():
+        ref, transcript = design(p, key)
         tmp = cache / (signature + '.partial.wav')
         run([str(ENGINE / 'source/build/qwen-tts'), '--model', str(MODELS / BASE), '--codec', str(MODELS / CODEC), '--lang', 'English', '--ref-wav', str(ref), '--ref-text', str(transcript), '--seed', str(p.get('seed', 42)), '--max-new', str(max(600, len(text.split()) * 14)), '-o', str(tmp)], text)
         validate_wav(tmp)
         tmp.replace(wav)
-    validate_wav(wav)
     from moduli.ffmpeg_utils import ffmpeg_path
     dest = Path(output)
     dest.parent.mkdir(parents=True, exist_ok=True)
