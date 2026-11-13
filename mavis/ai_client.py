@@ -4,7 +4,7 @@ import requests
 OLLAMA_LOCAL_URL = "http://localhost:11434/api/chat"
 
 
-def _ollama_local(messages: list, max_tokens: int = 8192, *, structured: bool = True) -> str:
+def _ollama_local(messages: list, max_tokens: int = 8192, *, structured: bool = True, patristic: bool = False) -> str:
     import re, json
     copied = [dict(m) for m in messages]
     if copied:
@@ -27,6 +27,11 @@ def _ollama_local(messages: list, max_tokens: int = 8192, *, structured: bool = 
             props['facts'] = {'type': 'array', 'items': {
                 'type': 'object', 'properties': fact,
                 'required': list(fact), 'additionalProperties': False}}
+            if patristic:
+                citation = {key: {'type': 'string'} for key in ('source_id', 'passage', 'quote')}
+                props['patristic_citations'] = {'type': 'array', 'items': {
+                    'type': 'object', 'properties': citation,
+                    'required': list(citation), 'additionalProperties': False}}
             payload['format'] = {'type': 'object', 'properties': props,
                                  'required': list(props), 'additionalProperties': False}
         elif '"script"' in prompt:
@@ -57,6 +62,6 @@ def _ollama_local(messages: list, max_tokens: int = 8192, *, structured: bool = 
             pass
 
 
-def chat_ollama(prompt: str, system: str | None = None, max_tokens: int = 8192, *, structured: bool = True) -> str:
+def chat_ollama(prompt: str, system: str | None = None, max_tokens: int = 8192, *, structured: bool = True, patristic: bool = False) -> str:
     turns = [('system', system), ('user', prompt)] if system else [('user', prompt)]
-    return _ollama_local([dict(role=role, content=value) for role, value in turns], max_tokens, structured=structured)
+    return _ollama_local([dict(role=role, content=value) for role, value in turns], max_tokens, structured=structured, patristic=patristic)

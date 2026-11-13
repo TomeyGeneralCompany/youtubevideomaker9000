@@ -172,10 +172,14 @@ def validate_facts(content, packet):
 def write_mascot_content(topic, packet):
     from mavis.ai_client import chat_ollama
     from mavis.editorial_policy import RULES
+    from mavis.patristic_sources import PREMISE, validate_citations
     from mavis.model_json import decode_script
     from requests import RequestException
     evidence = [{key: source[key] for key in ('source_id', 'outlet', 'url', 'published_at', 'text')}
                 for source in packet.get('sources', [])]
+    if packet.get('patristic'):
+        # Keep primary evidence in context even when internet research is enabled.
+        evidence = [dict(source, text=source['text'][:2000]) for source in evidence[:3]]
     prompt = f"""Write an English narration for a 90-second animated video.
 Subject: {topic}
 Write 200–250 words. Make closing_script the exact last 30–40 words of script.
@@ -187,17 +191,32 @@ claim, quote, value, and period). Ground numeric claims in evidence and quote th
 source text, at most 25 words per article. With no sources, write an evergreen script
 with facts=[] and no numeric claims. Do not invent facts or quotes.
 """
+    primary = packet.get('patristic', [])
+    if primary:
+        prompt += (
+            '\n' + PREMISE + '\nPRIMARY_DATA=' + json.dumps(primary, ensure_ascii=False)
+            + '\nThese are sources even if ARTICLE_DATA is empty. Chapter numbers in citations '
+            'are references, not news statistics; omit chapter numbers from spoken narration. '
+            'Use these primary passages as evidence. Include patristic_citations with source_id, '
+            'passage (chapter number as text), and quote (exact excerpt, or empty for paraphrase). '
+            'Use double quotation marks around verbatim quotations in narration. Put no headings '
+            'or citation lists in narration. Reference guides are secondary, never primary evidence: '
+            + json.dumps(packet.get('guides', []), ensure_ascii=False)
+        )
     feedback = ''
     last = None
     for attempt in range(3):
         try:
-            data = decode_script(chat_ollama(prompt + feedback, system=RULES, max_tokens=4096))
+            data = decode_script(chat_ollama(prompt + feedback, system=RULES, max_tokens=4096,
+                                             patristic=bool(primary)), patristic=bool(primary))
             words = len(data['script'].split())
             if not 200 <= words <= 250:
                 raise ValueError(f'Script contains {words} words; target 200–250')
             closing = data.get('closing_script', '')
             if not isinstance(closing, str) or not 28 <= len(closing.split()) <= 42 or (not data['script'].rstrip().endswith(closing.strip())):
                 raise ValueError('closing_script must be the exact final 28–42 words of script')
+            if primary:
+                validate_citations(data, primary)
             return validate_facts(data, packet)
         except RequestException as exc:
             if getattr(exc.response, 'status_code', None) in (400, 401, 402, 403, 404):

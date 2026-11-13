@@ -1,17 +1,22 @@
 """Tomey General's editorial rules for MAVIS productions."""
 import json
 
+from mavis.patristic_sources import PREMISE
+
 RULES = """MAVIS does not produce content advocating for, endorsing, or recruiting
-for socialism, LGBT movements or campaigns, Islam, atheism, paganism, or
-biological evolution. This includes presenting biological evolution as true or
+for socialism, LGBT movements or campaigns, Islam, atheism, paganism,
+biological evolution, the papacy, Roman Catholicism, or Eastern Orthodoxy. This includes presenting biological evolution as true or
 urging viewers to accept it. Substantive coverage of any of these topics must
 be explicitly framed from a Reformed Christian perspective, grounded
 in biblical teaching. Incidental references to people or events are not
 endorsement or substantive coverage. Critique ideas, doctrines, and policies;
-do not demean or harass people. Other subjects do not require a theological frame."""
+do not demean or harass people. Other subjects do not require a theological frame.
+Accurately explaining or quoting a doctrine is not advocacy. Patristic sources
+are available regardless of who else cites them. For early church theology:
+""" + PREMISE
 
 FIELDS = ('title', 'description', 'script', 'closing_script', 'thumbnail_phrase',
-          'tags', 'video_keywords', 'topic')
+          'tags', 'video_keywords', 'topic', 'patristic_citations')
 
 
 def review(content):

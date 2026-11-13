@@ -2,7 +2,7 @@
 import json
 
 
-def decode_script(reply):
+def decode_script(reply, *, patristic=False):
     try:
         document = json.loads(reply)
     except json.JSONDecodeError as exc:
@@ -23,4 +23,6 @@ def decode_script(reply):
         for fact in facts
     ):
         raise ValueError('Qwen reply needs a list of structured facts.')
+    if patristic and not isinstance(document.get('patristic_citations'), list):
+        raise ValueError('Qwen reply needs a list of primary passage citations.')
     return document

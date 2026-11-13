@@ -145,15 +145,31 @@ def produce(job, cfg, editorial=None, upload=False, publish_at=None, self_test=F
                 if not topic:
                     raise ValueError('Enter a topic or provide a script.')
                 packet = {'sources': []} if os.getenv('TUBE_OFFLINE') == '1' else collect_evidence()
+                from mavis.patristic_sources import GUIDES, is_patristic, passages
+                if is_patristic(topic):
+                    primary = passages(topic)
+                    if not primary:
+                        raise ValueError('No local patristic passages match this topic.')
+                    packet.update(patristic=primary, guides=GUIDES)
                 atomic_json(directory / 'research.json', packet)
                 content = write_mascot_content(topic, packet)
-                content['topic'] = content['title']
+                content['topic'] = topic
             state['content'] = content
             atomic_json(state_path, state)
         content = state['content']
         if not self_test or upload:
             stage('Editorial review')
             from mavis.editorial_policy import review
+            from mavis.patristic_sources import attach_sources, is_patristic, passages, validate_citations
+            subject = ' '.join(str(content.get(field, '')) for field in
+                               ('topic', 'title', 'script', 'description', 'thumbnail_phrase'))
+            if is_patristic(subject):
+                lookup = ' '.join(str(content.get(field, '')) for field in ('topic', 'title'))
+                if not is_patristic(lookup):
+                    lookup = subject
+                sources = validate_citations(content, passages(lookup), infer=True)
+                attach_sources(content, sources)
+                atomic_json(state_path, state)
             review(content)
         audio = directory / ('narration.mp3' if self_test else 'narration.wav')
         legacy_audio = directory / 'narration.mp3'

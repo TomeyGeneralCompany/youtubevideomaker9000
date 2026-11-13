@@ -9,7 +9,7 @@ from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
 FILES = ("studio.html", "local_studio.py", "run_mavis.py", "configure_media.py",
-         "requirements.txt", ".env.example", "examples/channel-settings.json",
+         "requirements.txt", "mavis/patristic_index.json", ".env.example", "examples/channel-settings.json",
          "examples/media-profile.json", "examples/voice-profile.json",
          "voice-runtime/model-files.json", "voice-runtime/LICENSE-engine.txt")
 
