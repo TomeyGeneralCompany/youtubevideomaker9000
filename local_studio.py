@@ -1,6 +1,7 @@
 """Run the local production dashboard: python3 local_studio.py."""
 import argparse
 import hmac
+from html import escape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
@@ -156,6 +157,17 @@ class Studio:
 
 
 
+def billing_link(setting, host):
+    value = os.environ.get(setting, '').strip()
+    try:
+        url = urlsplit(value)
+    except ValueError:
+        return ''
+    if url.scheme != 'https' or url.netloc != host or not url.path.strip('/'):
+        return ''
+    return escape(value, quote=True)
+
+
 def serve(studio, port):
     key = secrets.token_urlsafe(32)
 
@@ -181,6 +193,13 @@ def serve(studio, port):
             path = urlsplit(self.path).path
             if path == '/':
                 page = (SOURCE / 'studio.html').read_text().replace('__STUDIO_TOKEN__', key)
+                for marker, setting, host, label in (
+                    ('__BILLING_CHECKOUT__', 'MAVIS_CHECKOUT_URL', 'buy.stripe.com', 'Subscribe'),
+                    ('__BILLING_PORTAL__', 'MAVIS_BILLING_PORTAL_URL', 'billing.stripe.com', 'Manage subscription'),
+                ):
+                    href = billing_link(setting, host)
+                    link = f'<a href="{href}" target="_blank" rel="noopener noreferrer">{label}</a>' if href else ''
+                    page = page.replace(marker, link)
                 return self.respond(200, page.encode(), 'text/html; charset=utf-8')
             if path == '/overview':
                 from mavis.production_status import overview
@@ -238,6 +257,10 @@ def main():
     args = parser.parse_args()
     from run_mavis import ROOT, boot
     boot()
+    billing_config = os.environ.get('MAVIS_BILLING_CONFIG')
+    if billing_config:
+        from dotenv import load_dotenv
+        load_dotenv(billing_config, interpolate=False)
     with serve(Studio(ROOT), args.port) as server:
         url = f'http://127.0.0.1:{server.server_port}'
         print(url, flush=True)
