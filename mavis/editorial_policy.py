@@ -2,8 +2,10 @@
 import json
 
 RULES = """MAVIS does not produce content advocating for, endorsing, or recruiting
-for socialism or LGBT movements or campaigns. Substantive coverage of either
-topic must be explicitly framed from a Reformed Christian perspective, grounded
+for socialism, LGBT movements or campaigns, Islam, atheism, paganism, or
+biological evolution. This includes presenting biological evolution as true or
+urging viewers to accept it. Substantive coverage of any of these topics must
+be explicitly framed from a Reformed Christian perspective, grounded
 in biblical teaching. Incidental references to people or events are not
 endorsement or substantive coverage. Critique ideas, doctrines, and policies;
 do not demean or harass people. Other subjects do not require a theological frame."""
