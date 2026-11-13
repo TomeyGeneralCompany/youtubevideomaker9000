@@ -10,10 +10,14 @@ Set up your own Ollama, Qwen TTS, animation assets and YouTube channel.
 Billing operator setup:
 Deploy billing_service.app:application with a production WSGI server behind
 HTTPS. Persist the SQLite database on a private writable volume. Back it up.
-Set STRIPE_SECRET_KEY, STRIPE_PRICE_ID (recurring), MAVIS_BILLING_PUBLIC_URL
-(the HTTPS base URL also used in the package), and MAVIS_BILLING_DB (path).
-Configure the Stripe customer portal for the product and apply a request rate
-limit at the proxy, especially to POST /checkout. Use Stripe test mode first.
+Set PAYPAL_MODE=sandbox, PAYPAL_CLIENT_ID, PAYPAL_CLIENT_SECRET,
+PAYPAL_PLAN_ID, MAVIS_BILLING_PUBLIC_URL (HTTPS), and MAVIS_BILLING_DB.
+Create a paid recurring plan without a free trial or setup fee. Use separate
+credentials, plans, and databases for sandbox and live. Switch PAYPAL_MODE to
+live only after validating your own sandbox checkout and renewals.
+Add future providers in billing_service/connectors.py; each implements
+checkout, status, and portal. This adapter bills on a schedule, not per video.
+Keep secrets out of the desktop package. Rate-limit checkout at the proxy.
 
 MAVIS uses a random account key stored at <workspace>/.subscription-key.
 Back it up securely to keep account access across reinstalls or migration.

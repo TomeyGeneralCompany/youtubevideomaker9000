@@ -53,8 +53,9 @@ def request(root, action):
             result = json.load(response)
         if action != 'status':
             target = urlsplit(result['url'])
-            host = 'checkout.stripe.com' if action == 'checkout' else 'billing.stripe.com'
-            if target.scheme != 'https' or target.netloc != host:
+            hosts = {'www.paypal.com', 'www.sandbox.paypal.com'}
+            hosts.add('checkout.stripe.com' if action == 'checkout' else 'billing.stripe.com')
+            if target.scheme != 'https' or target.netloc not in hosts:
                 raise ValueError('Invalid billing link.')
         return result
     except (OSError, ValueError, KeyError, TypeError):
