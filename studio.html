@@ -4,18 +4,18 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>MAVIS Control Room</title>
 <style>
-:root{--teal:#01cac4;--red:#c90823;--ink:#fff;--muted:#fff0f2;--surface:#b60620;--border:#f67c8d}
+:root{--teal:#01cac4;--red:#c90823;--ink:#fff;--muted:#fff0f2;--surface:var(--teal);--border:#f67c8d}
 *{box-sizing:border-box} body{margin:0;background:var(--red);color:var(--ink);font:16px system-ui}
 header{border-bottom:1px solid var(--teal);background:var(--red)}
 header div,main{max-width:1160px;margin:auto;padding:24px} header h1{margin:0;font-size:2.4rem;letter-spacing:.12em}
 header p{margin:4px 0 0;color:var(--muted)} h2{font-size:1.15rem;margin:0 0 14px}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,290px),1fr));gap:16px}
-section,form{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:20px;margin:0 0 16px}
+section,form{background:var(--surface);color:#062d2c;--ink:#062d2c;--muted:#164b49;--border:#087975;border:1px solid var(--border);border-radius:10px;padding:20px;margin:0 0 16px}
 .primary{border-top:4px solid var(--teal)} .schedule{border-top:4px solid var(--teal)}
 dl{display:grid;grid-template-columns:auto 1fr;gap:9px 16px;margin:0}dt,th{color:var(--muted)}dd{margin:0;overflow-wrap:anywhere}
 table{width:100%;text-align:left;border-collapse:collapse}th,td{padding:8px;border-bottom:1px solid var(--border)}
-label{display:block;margin:12px 0}input:not([type=checkbox]),textarea{width:100%;padding:9px;background:#a7071e;color:inherit;border:1px solid var(--border);border-radius:4px}
-button{padding:9px 15px;background:var(--teal);color:#061b1a;border:0;border-radius:4px;font-weight:bold}button:disabled{opacity:.5}
+label{display:block;margin:12px 0}input:not([type=checkbox]),textarea{width:100%;padding:9px;background:#efffff;color:inherit;border:1px solid var(--border);border-radius:4px}
+button{padding:9px 15px;background:var(--red);color:#fff;border:0;border-radius:4px;font-weight:bold}button:disabled{opacity:.5}
 pre{white-space:pre-wrap;overflow-wrap:anywhere}video{max-width:100%;max-height:480px}a{color:var(--ink);text-decoration-color:var(--teal)}summary{cursor:pointer} [hidden]{display:none!important}
 </style>
 <header><div><h1>MAVIS</h1><p>Media Automation and Video Integration System · Control Room</p></div></header>
