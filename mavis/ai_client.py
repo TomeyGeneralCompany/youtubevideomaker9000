@@ -4,7 +4,7 @@ import requests
 OLLAMA_LOCAL_URL = "http://localhost:11434/api/chat"
 
 
-def _ollama_local(messages: list, max_tokens: int = 8192) -> str:
+def _ollama_local(messages: list, max_tokens: int = 8192, *, structured: bool = True) -> str:
     import re, json
     copied = [dict(m) for m in messages]
     if copied:
@@ -13,7 +13,7 @@ def _ollama_local(messages: list, max_tokens: int = 8192) -> str:
                'stream': False, 'think': False, 'keep_alive': 0,
                'options': {'num_ctx': 8192, 'num_predict': min(max_tokens, 4096),
                            'num_thread': 4, 'temperature': 0.6}}
-    if copied and 'json' in copied[-1]['content'].lower():
+    if structured and copied and 'json' in copied[-1]['content'].lower():
         payload['format'] = 'json'
         prompt = copied[-1]['content']
         if 'closing_script' in prompt:
@@ -57,6 +57,6 @@ def _ollama_local(messages: list, max_tokens: int = 8192) -> str:
             pass
 
 
-def chat_ollama(prompt: str, system: str | None = None, max_tokens: int = 8192) -> str:
+def chat_ollama(prompt: str, system: str | None = None, max_tokens: int = 8192, *, structured: bool = True) -> str:
     turns = [('system', system), ('user', prompt)] if system else [('user', prompt)]
-    return _ollama_local([dict(role=role, content=value) for role, value in turns], max_tokens)
+    return _ollama_local([dict(role=role, content=value) for role, value in turns], max_tokens, structured=structured)

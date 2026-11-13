@@ -151,6 +151,10 @@ def produce(job, cfg, editorial=None, upload=False, publish_at=None, self_test=F
             state['content'] = content
             atomic_json(state_path, state)
         content = state['content']
+        if not self_test or upload:
+            stage('Editorial review')
+            from mavis.editorial_policy import review
+            review(content)
         audio = directory / ('narration.mp3' if self_test else 'narration.wav')
         legacy_audio = directory / 'narration.mp3'
         if not audio.exists() and state.get('audio_done') and legacy_audio.exists():

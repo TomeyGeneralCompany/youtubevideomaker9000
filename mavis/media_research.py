@@ -171,6 +171,7 @@ def validate_facts(content, packet):
 
 def write_mascot_content(topic, packet):
     from mavis.ai_client import chat_ollama
+    from mavis.editorial_policy import RULES
     from mavis.model_json import decode_script
     from requests import RequestException
     evidence = [{key: source[key] for key in ('source_id', 'outlet', 'url', 'published_at', 'text')}
@@ -190,7 +191,7 @@ with facts=[] and no numeric claims. Do not invent facts or quotes.
     last = None
     for attempt in range(3):
         try:
-            data = decode_script(chat_ollama(prompt + feedback, max_tokens=4096))
+            data = decode_script(chat_ollama(prompt + feedback, system=RULES, max_tokens=4096))
             words = len(data['script'].split())
             if not 200 <= words <= 250:
                 raise ValueError(f'Script contains {words} words; target 200–250')

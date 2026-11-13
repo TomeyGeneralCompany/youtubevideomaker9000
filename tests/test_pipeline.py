@@ -21,6 +21,7 @@ def wav_file(path,seconds):
 
 class PipelineTests(unittest.TestCase):
  def setUp(self):
+    reviewer=patch("mavis.editorial_policy.review");self.review=reviewer.start();self.addCleanup(reviewer.stop)
     self.tmp=tempfile.TemporaryDirectory();self.root=Path(self.tmp.name);self.cwd=Path.cwd();os.chdir(self.root)
     self.env=patch.dict(os.environ,{'TUBE_WORKSPACE':str(self.root),'X264_PRESET':'ultrafast','FFMPEG_THREADS':'2'});self.env.start();asset_pack(self.root)
     for name in ['mavis.mascot','mavis.mascot_walk']:sys.modules.pop(name,None)
@@ -45,6 +46,18 @@ class PipelineTests(unittest.TestCase):
         runner.produce('check',{},editorial=str(editorial))
         state=json.loads((self.root/'runs/check/checkpoint.json').read_text());self.assertTrue(state['complete']);self.assertTrue(state['render_done'])
         runner.produce('check',{},editorial=str(editorial));self.assertEqual(render_call.call_count,1)
+ def test_editorial_rejection_stops_before_narration_or_render(self):
+    import run_mavis as runner
+    runner.ROOT=self.root
+    self.review.side_effect=ValueError('Editorial policy rejected this job')
+    folder=self.root/'runs/blocked';folder.mkdir(parents=True)
+    (folder/'checkpoint.json').write_text(json.dumps({'content':{'title':'Test','script':'Test'}}))
+    with patch.object(shorts,'render_short') as render:
+        with self.assertRaisesRegex(ValueError,'Editorial policy'):
+            runner.produce('blocked',{})
+        render.assert_not_called()
+    self.assertFalse((folder/'narration.wav').exists())
+    self.assertEqual(json.loads((folder/'checkpoint.json').read_text())['stage'],'Editorial review')
  def test_publisher_records_upload_before_thumbnail_failure(self):
     import run_mavis as runner
     from mavis import youtube_upload
