@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=MAVIS
+Comment=Local video production studio
+Exec=mavis
+Icon=mavis
+Terminal=true
+Categories=AudioVideo;Video;

@@ -93,6 +93,8 @@ def youtube_session(cfg, *, authorize=False):
     return client, channel_id
 
 def produce(job, cfg, editorial=None, upload=False, publish_at=None, self_test=False, topic=None):
+    from mavis.subscription import require
+    require(ROOT)
     from mavis.shorts import atomic_json, retry, validate_short
     directory = ROOT / 'runs' / job
     directory.mkdir(parents=True, exist_ok=True)
@@ -312,6 +314,8 @@ def main():
             checkpoint = ROOT / 'runs' / job / 'checkpoint.json'
             if checkpoint.exists() and json.loads(checkpoint.read_text()).get('complete'):
                 continue
+            from mavis.subscription import require
+            require(ROOT)
             job_path = ROOT / 'runs' / job
             job_path.mkdir(parents=True, exist_ok=True)
             source = job_path / 'editorial.json'

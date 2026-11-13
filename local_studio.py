@@ -1,7 +1,6 @@
 """Run the local production dashboard: python3 local_studio.py."""
 import argparse
 import hmac
-from html import escape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
@@ -16,6 +15,7 @@ from urllib.parse import urlsplit
 from urllib.request import ProxyHandler, build_opener
 import webbrowser
 
+from mavis.subscription import SubscriptionRequired, request as subscription_request, require
 from mavis.shorts import atomic_json
 from mavis.upload_metadata import prepare_upload_snippet
 
@@ -157,17 +157,6 @@ class Studio:
 
 
 
-def billing_link(setting, host):
-    value = os.environ.get(setting, '').strip()
-    try:
-        url = urlsplit(value)
-    except ValueError:
-        return ''
-    if url.scheme != 'https' or url.netloc != host or not url.path.strip('/'):
-        return ''
-    return escape(value, quote=True)
-
-
 def serve(studio, port):
     key = secrets.token_urlsafe(32)
 
@@ -193,14 +182,12 @@ def serve(studio, port):
             path = urlsplit(self.path).path
             if path == '/':
                 page = (SOURCE / 'studio.html').read_text().replace('__STUDIO_TOKEN__', key)
-                for marker, setting, host, label in (
-                    ('__BILLING_CHECKOUT__', 'MAVIS_CHECKOUT_URL', 'buy.stripe.com', 'Subscribe'),
-                    ('__BILLING_PORTAL__', 'MAVIS_BILLING_PORTAL_URL', 'billing.stripe.com', 'Manage subscription'),
-                ):
-                    href = billing_link(setting, host)
-                    link = f'<a href="{href}" target="_blank" rel="noopener noreferrer">{label}</a>' if href else ''
-                    page = page.replace(marker, link)
                 return self.respond(200, page.encode(), 'text/html; charset=utf-8')
+            if path == '/account/status':
+                if not hmac.compare_digest(self.headers.get('X-Studio-Token', ''), key):
+                    return self.send_error(403)
+                state = subscription_request(studio.root, 'status')
+                return self.json(200, {k: state[k] for k in ('active', 'state')})
             if path == '/overview':
                 from mavis.production_status import overview
                 try:
@@ -230,10 +217,13 @@ def serve(studio, port):
             self.send_error(404)
 
         def do_POST(self):
-            if (not self.valid_host() or self.path != '/jobs'
+            if (not self.valid_host() or self.path not in ('/jobs', '/account/checkout', '/account/portal')
                     or not hmac.compare_digest(self.headers.get('X-Studio-Token', ''), key)):
                 return self.send_error(403)
             try:
+                if self.path.startswith('/account/'):
+                    return self.json(200, subscription_request(studio.root, self.path.rsplit('/', 1)[1]))
+                require(studio.root)
                 size = int(self.headers.get('Content-Length', 0))
                 if not 0 < size <= 100_000:
                     raise ValueError('Invalid job size.')
@@ -241,6 +231,8 @@ def serve(studio, port):
                 if not isinstance(data, dict):
                     raise ValueError('Invalid job.')
                 return self.json(200, {'job': studio.start(data)})
+            except SubscriptionRequired as exc:
+                self.json(402, {'error': str(exc)})
             except (ValueError, TypeError, OSError) as exc:
                 self.json(400, {'error': str(exc)})
 
@@ -257,10 +249,6 @@ def main():
     args = parser.parse_args()
     from run_mavis import ROOT, boot
     boot()
-    billing_config = os.environ.get('MAVIS_BILLING_CONFIG')
-    if billing_config:
-        from dotenv import load_dotenv
-        load_dotenv(billing_config, interpolate=False)
     with serve(Studio(ROOT), args.port) as server:
         url = f'http://127.0.0.1:{server.server_port}'
         print(url, flush=True)

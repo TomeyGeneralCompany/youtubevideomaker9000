@@ -1,22 +1,25 @@
-MAVIS for Ubuntu / Zorin OS
+MAVIS desktop package (Ubuntu / Zorin OS)
 
-Install prerequisites: sudo apt install python3 python3-venv ffmpeg
-Extract the archive. Open a terminal in the MAVIS folder and run:
-    sh install.sh
+Build: python3 packaging/deb.py /tmp/mavis.deb --billing-url https://billing.example.com
+Install: sudo apt install ./mavis.deb
+Open MAVIS from the desktop menu. On first launch a terminal shows the Python
+dependency installation; the dashboard then opens in your browser.
+The app icon is a replaceable placeholder in packaging/icon.svg.
+Set up your own Ollama, Qwen TTS, animation assets and YouTube channel.
 
-The installer downloads Python dependencies. Launch MAVIS from the application
-menu. Its dashboard opens in your browser; production runs on your computer.
-For diagnostics, see ~/.local/state/mavis/launcher.log.
+Billing operator setup:
+Deploy billing_service.app:application with a production WSGI server behind
+HTTPS. Persist the SQLite database on a private writable volume. Back it up.
+Set STRIPE_SECRET_KEY, STRIPE_PRICE_ID (recurring), MAVIS_BILLING_PUBLIC_URL
+(the HTTPS base URL also used in the package), and MAVIS_BILLING_DB (path).
+Configure the Stripe customer portal for the product and apply a request rate
+limit at the proxy, especially to POST /checkout. Use Stripe test mode first.
 
-Set up Ollama with qwen3:4b for local script writing, and supply your own
-compatible animation assets and local Qwen TTS setup. Use the dashboard setup
-checks to see what's missing. YouTube authorization is needed for uploading.
-No channel credentials, voice models, or customer artwork are included.
-By default, the installed app keeps its data under ~/.local/share/mavis/workspace.
-
-For the publisher: configure billing.env before running packaging/build.py.
-Use a Stripe Payment Link for a recurring price and the Stripe customer portal
-login link. Only public Stripe URLs belong in this file; never put secret keys
-in the installer. On reinstall the existing user billing configuration is
-preserved in ~/.config/mavis/billing.env. Empty links are hidden. Checkout
-collects payments; this build does not require a paid subscription to run.
+MAVIS uses a random account key stored at <workspace>/.subscription-key.
+Back it up securely to keep account access across reinstalls or migration.
+This build uses the key as account identity; email login/recovery is not included.
+Every new production job checks Stripe through the billing service. If the
+service is unreachable or the subscription is inactive, new jobs stay locked.
+Existing jobs can finish and existing videos remain accessible. Without a
+billing URL the package stays locked. Do not publish the unconfigured package.
+Development source checkouts run without the package billing requirement.
