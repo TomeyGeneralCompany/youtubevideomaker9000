@@ -2,13 +2,31 @@
 <html lang="en">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Local Video Studio</title>
+<title>MAVIS Control Room</title>
 <style>
-body{font:16px system-ui;color:#edf6f3;background:#10201f;max-width:760px;margin:36px auto;padding:0 20px}
-section,form{background:#1a302f;border:1px solid #416563;border-radius:12px;padding:20px;margin:16px 0}
-h1,h2{margin-top:0} label{display:block;margin:12px 0} input:not([type=checkbox]),textarea{box-sizing:border-box;width:100%;padding:9px;background:#10201f;color:inherit;border:1px solid #729a96;border-radius:4px} button{padding:9px 15px;background:#efc878;color:#10201f;border:0;border-radius:4px;font-weight:bold} button:disabled{opacity:.5} pre{white-space:pre-wrap;overflow-wrap:anywhere} video{max-width:100%;max-height:480px} a{color:#efc878}
+:root{--teal:#008f87;--red:#b82732;--ink:#effbfa;--muted:#a7c6c3;--surface:#102a2b;--border:#325556}
+*{box-sizing:border-box} body{margin:0;background:#081819;color:var(--ink);font:16px system-ui}
+header{border-top:5px solid var(--red);border-bottom:1px solid var(--border);background:var(--surface)}
+header div,main{max-width:1160px;margin:auto;padding:24px} header h1{margin:0;font-size:2.4rem;letter-spacing:.12em}
+header p{margin:4px 0 0;color:var(--muted)} h2{font-size:1.15rem;margin:0 0 14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,290px),1fr));gap:16px}
+section,form{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:20px;margin:0 0 16px}
+.primary{border-top:4px solid var(--teal)} .schedule{border-top:4px solid var(--red)}
+dl{display:grid;grid-template-columns:auto 1fr;gap:9px 16px;margin:0}dt,th{color:var(--muted)}dd{margin:0;overflow-wrap:anywhere}
+table{width:100%;text-align:left;border-collapse:collapse}th,td{padding:8px;border-bottom:1px solid var(--border)}
+label{display:block;margin:12px 0}input:not([type=checkbox]),textarea{width:100%;padding:9px;background:#081819;color:inherit;border:1px solid #729a96;border-radius:4px}
+button{padding:9px 15px;background:var(--teal);color:#061b1a;border:0;border-radius:4px;font-weight:bold}button:disabled{opacity:.5}
+pre{white-space:pre-wrap;overflow-wrap:anywhere}video{max-width:100%;max-height:480px}a{color:#7cf0e5}summary{cursor:pointer} [hidden]{display:none!important}
 </style>
-<h1>Local Video Studio</h1>
+<header><div><h1>MAVIS</h1><p>Media Automation and Video Integration System · Control Room</p></div></header>
+<main>
+<div class="grid">
+<section class="primary"><h2>Current production</h2><dl id="active"><dt>Status</dt><dd>Loading…</dd></dl></section>
+<section class="primary"><h2>YouTube channel</h2><dl id="channel"><dt>Status</dt><dd>Loading…</dd></dl></section>
+</div>
+<section class="schedule"><h2>Production schedule</h2><p id="schedule-state"></p>
+<table id="schedule-table" hidden><thead><tr><th>Job</th><th>Production start</th><th>Publish time</th><th>Status</th></tr></thead><tbody id="schedule-rows"></tbody></table></section>
+<section><h2>Recent jobs</h2><ul id="recent"><li>Loading…</li></ul></section>
 <section><h2>Local setup</h2><pre id="setup">Checking workspace…</pre></section>
 <form id="form">
 <h2>Make a video</h2>
@@ -30,11 +48,50 @@ h1,h2{margin-top:0} label{display:block;margin:12px 0} input:not([type=checkbox]
 <details id="metadata-panel" hidden><summary>YouTube metadata preview</summary><pre id="metadata"></pre></details>
 <pre id="log"></pre><video id="preview" controls hidden></video>
 <p><a id="download" hidden download="short.mp4">Download video</a></p></section>
+</main>
 <script>
 const $ = id => document.getElementById(id);
 let job = localStorage.getItem('local-studio-job');
 let timer;
 fetch('/setup').then(r=>r.json()).then(d=>{$('setup').textContent=Object.entries(d).map(([k,v])=>k+': '+v).join('\n')}).catch(()=>{$('setup').textContent='Unable to check local setup.'});
+function fields(node, rows) {
+  node.replaceChildren();
+  for (const [label,value] of rows) {
+    const term=document.createElement('dt'), detail=document.createElement('dd');
+    term.textContent=label; detail.textContent=value; node.append(term,detail);
+  }
+}
+function clock(value,zone) {
+  return value ? new Intl.DateTimeFormat(undefined,{timeZone:zone,month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}).format(new Date(value)) : '—';
+}
+let runnerBusy=false;
+async function overview() {
+  try {
+    const r=await fetch('/overview'), d=await r.json();
+    if (!r.ok) throw Error(d.error);
+    const time=v=>clock(v,d.timezone), a=d.active, c=d.connection;
+    runnerBusy=d.runner_busy;
+    $('start').disabled=runnerBusy || manualBusy;
+    fields($('active'),a ? [['Job',a.title||a.id],['Stage',a.stage||'Starting'],['Channel',a.channel||'Local production'],['Started',time(a.start)],['Stage started',time(a.stage_start)],['Est. finish',a.eta ? time(a.eta) : 'Not available yet'],['Scheduled publish',time(a.publish)]] : [['Status',d.runner_busy?'Runner busy · waiting for job details':'Idle']]);
+    fields($('channel'),[['Configured',d.channel||d.channel_id||'None'],['Last verified',c.channel||'No verified connection'],['Channel ID',c.channel_id||'—'],['Verified at',time(c.verified_at)]]);
+    $('schedule-state').textContent=(d.mode==='scheduled'?'Schedule configured':'Automatic scheduling is off')+' · '+d.timezone;
+    $('schedule-table').hidden=!d.schedule.length;
+    $('schedule-rows').replaceChildren(...d.schedule.map(s=>{
+      const row=document.createElement('tr');
+      for(const value of [[s.title||'Queued production',s.channel].filter(Boolean).join(' · '),time(s.start),time(s.publish),s.status]){
+        const cell=document.createElement('td');cell.textContent=value;row.append(cell);
+      }
+      return row;
+    }));
+    $('recent').replaceChildren(...(d.recent.length?d.recent:[{title:'No jobs yet'}]).map(j=>{
+      const item=document.createElement('li');
+      item.textContent=(j.title||j.id)+(j.error?' · '+j.error:j.stage?' · '+j.stage:'');return item;
+    }));
+  } catch(e) { $('schedule-state').textContent='Schedule unavailable: '+e.message; }
+}
+let manualBusy=false;
+overview();
+setInterval(overview,3000);
 async function status() {
   const r = await fetch('/status/'+job);
   if (!r.ok) return;
@@ -50,7 +107,8 @@ async function status() {
     'Thumbnail text: '+(s.thumbnail_text||''), 'Tags: '+m.tags.join(', '),
     'Description:', m.description
   ].join('\n') : (s.metadata_error||'');
-  $('start').disabled=s.running;
+  manualBusy=s.running;
+  $('start').disabled=runnerBusy || manualBusy;
   $('resume').hidden=s.running||s.ready;
   if(s.ready){
     $('preview').hidden=false; $('preview').src='/video/'+job;

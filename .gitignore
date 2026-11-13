@@ -19,3 +19,4 @@ assets/
 # Local channel settings and research sources
 mavis.json
 news_sources.json
+youtube-connection.json

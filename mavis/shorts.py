@@ -131,7 +131,7 @@ def _layer_signature(narration, title):
     return hashlib.sha256(json.dumps(stamp, sort_keys=True).encode()).hexdigest()
 
 
-def render_short(audio_path, output_path, mood=None, on_progress=None, custom_music=None, captions_text=None):
+def render_short(audio_path, output_path, mood=None, on_progress=None, custom_music=None, captions_text=None, on_stage=None):
     from mavis.ffmpeg_utils import ffmpeg_path
     destination = Path(output_path).absolute()
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -160,6 +160,8 @@ def render_short(audio_path, output_path, mood=None, on_progress=None, custom_mu
                 raise ValueError('Incomplete mascot animation layer')
             os.replace(root / 'mascot.mkv', layer)
             atomic_json(metadata, {'signature': signature})
+        if on_stage:
+            on_stage('Final render')
         music = Path(custom_music).expanduser().resolve() if custom_music else None
         if music and not music.is_file():
             raise ValueError(f'Music file does not exist: {music}')

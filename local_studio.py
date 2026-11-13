@@ -182,6 +182,12 @@ def serve(studio, port):
             if path == '/':
                 page = (SOURCE / 'studio.html').read_text().replace('__STUDIO_TOKEN__', key)
                 return self.respond(200, page.encode(), 'text/html; charset=utf-8')
+            if path == '/overview':
+                from mavis.production_status import overview
+                try:
+                    return self.json(200, overview(studio.root))
+                except (ValueError, OSError, KeyError) as exc:
+                    return self.json(400, {'error': str(exc)})
             if path == '/setup':
                 return self.json(200, studio.setup())
             match = re.fullmatch(r'/(status|video)/(studio-[a-f0-9]{16})', path)
